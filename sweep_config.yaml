@@ -1,0 +1,34 @@
+program: norm_lle_pinn_sweepv2.py
+
+method: bayes
+project: LLE_PINN 
+entity: viswacolab-technical-university-of-denmark
+
+metric:
+  name: loss
+  goal: minimize
+parameters:
+  num_layers:
+    values: [2, 3, 4, 5, 6]
+  activation:
+    values: ['tanh', 'sigmoid', 'swish']
+  num_nodes:
+    values: [64, 128, 256]
+  mapping_size:
+    values: [32,64]
+  sigma:
+    values: [0.1, 0.2, 0.3, 0.4, 0.5]
+  scale:
+    values: [[1, 10], [1, 10, 20], [1, 15, 50], [1, 20, 50, 100]]
+  optimizer:
+    values: 
+      - 'adam'
+      - 'adamw'
+      - 'rmsprop'
+      - 'nadam'
+# early_terminate:
+#   type: hyperband
+#   s: 2
+#   eta: 3
+#   max_iter: 50000
+#   min_iter: 10000
