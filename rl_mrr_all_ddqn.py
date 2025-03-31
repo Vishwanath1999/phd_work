@@ -567,7 +567,7 @@ agent_frozen = agent
 # # freeze the actor network
 # for param in agent_frozen.actor.parameters():
 #     param.requires_grad = False
-state, acav, ecav = env.reset(10000)
+state, acav, ecav = env.reset()
 r_hist = []
 action_hist = []
 acav_hist = []
