@@ -208,6 +208,7 @@ class RL_MRR_Env():
         self.t_sim = torch.linspace(-t_ramp[0]/2 + del_omega_perc[0]*t_ramp[0], t_ramp[0]/2 + del_omega_perc[0]*t_ramp[0], Nt, device=DEVICE, dtype=torch.float64)
 
         self.pcav_ref = loadmat('ref_check.mat')['Pcomb'].T
+        self.primary_sidebands = loadmat('primary_sidebands.mat')['spec'][0]
         # self.pcav_ref = loadmat('Pcomb_rl_allv2.mat')['Pcomb'].T
 
     
@@ -354,7 +355,7 @@ class RL_MRR_Env():
             self.init_steps_ = int(1.5e5)
         # for idx in tqdm(range(int(1.5e5)), ncols=120):
         for _ in range(self.init_steps_):
-            mul_factor = np.random.choice([1, -1, 0], p=[1/3, 1/3, 1/3])
+            mul_factor = np.random.choice([1, -1, 0], p=[0.9,0.05,0.05])
             del_omega = self.current_del_omega + mul_factor*(1/self.max_steps)*(self.del_omega_end - self.del_omega_init)
 
             Fdrive_val = self.Fdrive(del_omega, self.t_sim[self.step_cntr], self.Ain, self.ind_pmp)
@@ -424,26 +425,38 @@ class RL_MRR_Env():
         desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
         desired_spectrum_dBm = torch.clamp(desired_spectrum_dBm, min=-60, max=10)
 
-        if torch.allclose(Ecav_dBm, desired_spectrum_dBm, atol=1):
-            achieved = True
-        else:
-            achieved = False
+        
         
 
         # Calculate the reward as the l2 error norm between the desired spectrum and the current spectrum
         # spectral_mse = -(torch.linalg.norm(Ecav-desired_spectrum, ord=2)/torch.linalg.norm(desired_spectrum, ord=2))
         # # rescale the spectral_mse to be between -1 and 0
         
-        pcav_mse = -(1000*(curr_pcav - self.pcav_ref[self.step_cntr-1])**2)
+        # pcav_mse = -(500*(curr_pcav - self.pcav_ref[self.step_cntr-1])**2)
 
         # if self.pcav_hist[0]-self.pcav_hist[-1]>0.1 and self.pcav_hist[-1] > 0: 
         #     self.alpha_ = 1-0.75
             # print('Flipped...')
 
-        reward = pcav_mse+1
+        if self.step_cntr < 45000:
+            reward = 2*np.mean(self.pcav_hist)#pcav_mse
+        elif self.step_cntr >= 50000 and self.step_cntr < int(0.45*self.max_steps):
+            reward = 2*np.mean(self.pcav_hist) + 2
+        else:
+            reward = 2*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 2
+            # reward = np.array(reward).reshape(1,)
+        
+        if torch.allclose(Ecav_dBm, desired_spectrum_dBm, atol=1):
+            achieved = True
+            reward += 5
+        else:
+            achieved = False
         
         # finf correlation between pcav_hist and recent samples of pcav_ref
-        corr = np.corrcoef(self.pcav_hist, self.pcav_ref[self.step_cntr-len(self.pcav_hist):self.step_cntr,0])[0,1]
+        # if self.step_cntr >= int(0.6*self.max_steps):
+        #     corr = np.corrcoef(self.pcav_hist, self.pcav_ref[self.step_cntr-len(self.pcav_hist):self.step_cntr,0])[0,1]
+        # else:
+        #     corr = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1]
 
         # pop the first element of the pcav_hist if it exceeds 10001
         if len(self.pcav_hist) > 10000:
@@ -455,9 +468,17 @@ class RL_MRR_Env():
         else:
             done = False
         
-        if self.step_cntr >= int(0.6*self.max_steps):
-            if corr<0:#Ecav_dBm.max() < -40:
+        if self.step_cntr > 35000 and self.step_cntr < 45000:
+            if np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1]<0.5:
                 done = True
+                reward -= 10
+                print('Primary Sidebands not formed')
+        elif self.step_cntr >= int(0.5*self.max_steps):
+            if torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1]<0.1:
+                done = True
+                reward -= 5
+                # print('Pcav Corr:',corr)
+                print('Spectral Corr:', torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1])
         else:
             done = False
         
@@ -478,18 +499,20 @@ env = RL_MRR_Env()
 # del_omega.append(env.current_del_omega.cpu().numpy())
 # %%
 desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
-desired_spectrum = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
+desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 
 from dueling_dqn import Agent
-agent = Agent(n_actions=3, input_dims=[441], lr=1e-4, warm_up=170000, batch_size=128, gamma=0.99,\
-                eps_min=0.1, replace=1000, checkpoint_dir='./tmp/dueling_ddqn')
+agent = Agent(n_actions=3, input_dims=[441], lr=5e-4, warm_up=50000, batch_size=128, gamma=0.99,\
+                eps_min=0.05, replace=1000, checkpoint_dir='./tmp/dueling_ddqn')
+print(agent.q_eval)
 # %%
 # init wandb run
 wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark')
 wandb.watch(agent.q_eval, log='gradients', log_freq=1000)
 # set the wandb run name
-wandb.run.name = 'ddqn'
+wandb.run.name = 'ddqn2'
 # %% MADDPG train loop
 logs={}
 n_games = 50000
@@ -498,6 +521,7 @@ n_games = 50000
 global_n_steps = 0
 scores = []
 best_score = -np.inf
+
 for i in range(n_games):
     score = 0
     done = False
@@ -506,7 +530,7 @@ for i in range(n_games):
     while not done:
         action = agent.choose_action(ecav/10)
         
-        next_state, reward, done, achieved, _, ecav_ = env.step(state, action, desired_spectrum)
+        next_state, reward, done, achieved, _, ecav_ = env.step(state, action, desired_spectrum_tensor)
         # log perf action
         logs['detuning'] = action
         if achieved==True:
@@ -521,24 +545,28 @@ for i in range(n_games):
         score += reward
         # r_hist.append(reward)
         n_steps += 1
-        global_n_steps += 1
+        
         if agent.memory.mem_cntr > 4*agent.batch_size:
             # print('Training...')
-            loss = agent.learn(global_n_steps)
+            loss, mean_q = agent.learn(global_n_steps)
             logs['critic_loss'] = loss
+            for idx,q in enumerate(mean_q):
+                logs['mean_q'+str(idx)] = q
 
         logs['epsilon'] = agent.epsilon
 
         if global_n_steps%100 == 0:
             wandb.log(logs)
 
+        global_n_steps += 1
     scores.append(score)
     avg_score = np.mean(scores[-100:])
     
-    print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score, 'n_steps', n_steps)
     if avg_score > best_score:
         best_score = avg_score
         agent.save_model()
+
+    print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,'best score %.2f' % best_score, 'n_steps', n_steps)
 # %% save model
 # torch.save(agent.actor.state_dict(), './rl_results/actor_power_det_ctrl.pth')
 # save the r_hist into a csv file
@@ -567,7 +595,7 @@ agent_frozen = agent
 # # freeze the actor network
 # for param in agent_frozen.actor.parameters():
 #     param.requires_grad = False
-state, acav, ecav = env.reset()
+state, acav, ecav = env.reset(10000)
 r_hist = []
 action_hist = []
 acav_hist = []
@@ -577,13 +605,15 @@ pcav_hist = []
 pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120)
 idx = 0
 done = False
+ecav_hist = []
 while not done:
 # for idx in tqdm(range(env.init_steps_, env.max_steps), ncols=120):
     # perform random actions
     try:
+        # action = agent.choose_action(ecav, True)
         action = 1#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
 
-        next_state, reward, done, achieved, acav_, ecav_ = env.step(state, action, desired_spectrum)
+        next_state, reward, done, achieved, acav_, ecav_ = env.step(state, action, desired_spectrum_tensor)
         state = next_state
         ecav = ecav_
         score += reward
@@ -591,6 +621,7 @@ while not done:
         pcav_hist.append(curr_pcav)
         r_hist.append(reward)
         action_hist.append(action)
+        ecav_hist.append(ecav_)
         if idx %100 == 0:        
             acav_hist.append(acav_)
         idx += 1
@@ -603,17 +634,27 @@ pbar.close()
 
 print('Test score %.2f' % score)
 # %%
+plt.figure(figsize=(14, 4))
+plt.imshow(np.array(ecav_hist).T, aspect='auto', cmap='jet',\
+            extent=[0, len(ecav_hist), -1e12*env.tR.item()/2, 1e12*env.tR.item()/2])
+plt.colorbar(label='Power(dBm)')
+plt.xlabel('Tuning Steps')
+plt.ylabel(r'$\mu$' +'(rel)', fontsize=14)
+# plt.xticks(fontsize=14)
+# plt.yticks(fontsize=14)
+plt.xlim(15000,40000)
+plt.show()
+# %%
 # find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))
 plt.plot(pcav_hist, label='Obtained')
 plt.plot(env.pcav_ref[10000:], label='Reference')
-# plt.xlim(135000,150000)
+# plt.xlim(25000,50000)
 plt.grid()
 plt.legend()
 plt.xlabel('Iteration')
 plt.ylabel('Pcav')
 plt.show()
-
 # %%
 # from fastdtw import fastdtw
 # from scipy.spatial.distance import euclidean
@@ -656,7 +697,7 @@ plt.show()
 
 # %%
 plt.figure(figsize=(14,4))
-spectrum = np.fft.fftshift(np.fft.fft(np.array(acav_hist))).T
+spectrum = np.fft.fftshift(np.fft.fft(np.array(acav_hist).T, axis=0), axes=0)
 spectrum_dBm = 10*np.log10(np.abs(spectrum)**2)+30
 spectrum_dBm = np.clip(spectrum_dBm, -60, 10)/10
 plt.imshow(spectrum_dBm, aspect='auto', cmap='jet'\
@@ -672,12 +713,12 @@ plt.show()
 plt.figure(figsize=(10, 6))
 plt.plot(r_hist)
 plt.xlabel('Iteration', fontsize=14)
-plt.ylabel('Reward '+ r'$(1-\alpha)(corr) + \alpha (-mse)$', fontsize=14)
+plt.ylabel('Reward ', fontsize=14)
 plt.grid()
 plt.savefig('./maddpg_results/ac_rewards_spec_all_ctrl.png')
 plt.show()
 # %%
-desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
+# desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
 plt.figure(figsize=(14,4))
 plt.vlines(np.arange(len(ecav)), -60*np.ones(len(ecav)), ecav, \
            label='Obtained Spectrum')

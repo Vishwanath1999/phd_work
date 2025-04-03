@@ -46,24 +46,25 @@ class DuelingDQN(nn.Module):
         self.checkpoint_dir = chkpt_dir
         self.checkpoint_file = os.path.join(self.checkpoint_dir, name)
 
-        self.fc1 = nn.Linear(*input_dims, fc_dims)
-        # self.fc2 = nn.Linear(fc_dims, fc_dims)
-        self.fc_v = nn.Linear(fc_dims, fc_dims)
-        self.fc_a = nn.Linear(fc_dims, fc_dims)
+        self.fc1 = nn.Linear(*input_dims, fc_dims//2)
+        self.fc2 = nn.Linear(fc_dims, fc_dims)
         self.V = nn.Linear(fc_dims, 1)
         self.A = nn.Linear(fc_dims, n_actions)
+
+        self.seq_encoder = nn.GRU(input_size=1, hidden_size=fc_dims//2, batch_first=True)
+
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
         self.loss = nn.MSELoss()
         self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
         self.to(self.device)
     
-    def forward(self, state):
+    def forward(self, state, power_hist):
         x = F.relu(self.fc1(state))
-        # x = F.relu(self.fc2(x))
-        x_v = F.relu(self.fc_v(x))
-        x_a = F.relu(self.fc_a(x))
-        V = self.V(x_v)
-        A = self.A(x_a)
+        _, seq_h = self.seq_encoder(power_hist.view(*power_hist.shape, 1))
+        x = T.cat((x, seq_h[0]), dim=1)
+        x = F.relu(self.fc2(x))
+        V = self.V(x)
+        A = self.A(x)
 
         return V, A
     
@@ -94,18 +95,17 @@ class Agent:
         self.q_eval = DuelingDQN(lr, n_actions, input_dims, name='dueling_dqn_eval', chkpt_dir=checkpoint_dir)
         self.q_next = DuelingDQN(lr, n_actions, input_dims, name='dueling_dqn_next', chkpt_dir=checkpoint_dir)
 
-        self.q_next.load_state_dict(self.q_eval.state_dict())
         
     
-    def choose_action(self, state, deterministic=False):
+    def choose_action(self, state, pcav_hist, deterministic=False):
+        state = T.tensor(np.array([state]), dtype=T.float).to(self.q_eval.device)
+        pcav_hist = T.tensor(np.array([pcav_hist]), dtype=T.float).to(self.q_eval.device)
         if deterministic:
-            state = T.tensor(np.array([state]), dtype=T.float).to(self.q_eval.device)
-            _, advantage = self.q_eval.forward(state)
+            _, advantage = self.q_eval.forward(state,pcav_hist)
             action = T.argmax(advantage).item()
         else:
             if np.random.random() > self.epsilon:
-                state = T.tensor(np.array([state]), dtype=T.float).to(self.q_eval.device)
-                _, advantage = self.q_eval.forward(state)
+                _, advantage = self.q_eval.forward(state,pcav_hist)
                 action = T.argmax(advantage).item()
             else:
                 action = np.random.choice(self.n_actions)
@@ -116,11 +116,9 @@ class Agent:
         self.memory.store_transition(state, action, reward, state_, done)
     
     def decay_epsilon(self):
-        if self.epsilon > self.eps_min*10:
+        if self.epsilon > self.eps_min:
             self.epsilon -= self.eps_dec
-        elif self.epsilon < 10*self.eps_min and self.epsilon > self.eps_min:
-            self.epsilon -= self.eps_dec/10
-        elif self.epsilon <= self.eps_min:
+        else:
             self.epsilon = self.eps_min
     
     def replace_target_network(self, step):
@@ -136,7 +134,7 @@ class Agent:
         self.q_next.load_checkpoint()
     
     def learn(self, step):
-        if self.memory.mem_cntr < 4*self.batch_size:
+        if self.memory.mem_cntr < self.batch_size:
             return
         
         self.replace_target_network(step)
@@ -167,5 +165,5 @@ class Agent:
         nn.utils.clip_grad_norm_(self.q_eval.parameters(), 1)
         self.q_eval.optimizer.step()
         self.decay_epsilon()
-        return loss.item(), q_eval.mean(dim=0).cpu().detach().numpy()
+        return loss.item()
 
