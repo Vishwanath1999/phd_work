@@ -338,8 +338,8 @@ class RL_MRR_Env():
         self.step_cntr = 0
         self.pcav_hist = []
 
-        self.power = np.random.uniform(0.12, 0.18, size=(1,))
-        # self.power = np.array([0.18])
+        # self.power = np.random.uniform(0.12, 0.18, size=(1,))
+        self.power = np.array([0.14])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
         # # fpmp = fpmp[0]
         # Ain = torch.zeros(1, len(self.mu),dtype=torch.complex128, device=DEVICE)
@@ -374,7 +374,7 @@ class RL_MRR_Env():
             curr_pcav = np.sum(np.abs(Acav_np))
             self.pcav_hist.append(curr_pcav)
 
-        self.primary_sidebands_flag = False
+        self.alpha_ = 0.75
         
         print('Reset...')
         return self.state, Acav_np, Ecav_dBm.numpy()
@@ -446,7 +446,7 @@ class RL_MRR_Env():
             reward = 2*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 2
             # reward = np.array(reward).reshape(1,)
         
-        if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50:
+        if torch.allclose(Ecav_dBm, desired_spectrum_dBm, atol=1):
             achieved = True
             reward += 5
         else:
@@ -464,24 +464,20 @@ class RL_MRR_Env():
         if len(self.pcav_hist) > 10000:
             self.pcav_hist.pop(0)
         
-        if self.step_cntr<45000 and self.primary_sidebands_flag==False:
-            self.primary_sidebands_flag = np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1]<0.5
-        
-        if self.step_cntr == 45000 and self.primary_sidebands_flag == False:
-            done = True
-            reward -= 10
-            print('Primary Sidebands not formed')
-            print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
-        elif self.step_cntr-self.init_steps_ >= int(0.5*self.max_steps):
-            if torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() < 0.3:
+        if self.step_cntr > 35000 and self.step_cntr < 45000:
+            if np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1]<0.5:
+                done = True
+                reward -= 10
+                # print('Primary Sidebands not formed')
+        elif self.step_cntr >= int(0.5*self.max_steps):
+            if torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item()<0.2:
                 done = True
                 reward -= 5
                 # print('Pcav Corr:',corr)
-                print('Spectral Corr:', torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item())
-    
-        if self.step_cntr+1 == self.max_steps:
+                # print('Spectral Corr:', torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item())
+        elif self.step_cntr == self.max_steps:
             done = True
-            # reward += 5
+            reward += 5
         
         return self.next_state, reward, done, achieved, Acav_np, Ecav_dBm.cpu().numpy()
 
@@ -506,7 +502,7 @@ desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=to
 
 from dueling_dqn import Agent
 agent = Agent(n_actions=3, input_dims=[441], lr=5e-4, warm_up=50000, batch_size=128, gamma=0.99,\
-                eps_min=0.05, replace=1000, checkpoint_dir='./tmp/dueling_ddqn', run_name='ddqn_diff_power')
+                eps_min=0.05, replace=1000, checkpoint_dir='./tmp/dueling_ddqn', run_name='ddqn_const_pow')
 print(agent.q_eval)
 
 # %%
@@ -529,7 +525,6 @@ for i in range(n_games):
     done = False
     n_steps = 0
     state, acav, ecav = env.reset(10000)
-    logs['pump power'] = env.power
     while not done:
         action = agent.choose_action(ecav/10)
         
@@ -583,6 +578,7 @@ for i in range(n_games):
         agent.save_model()
 
     print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,'best score %.2f' % best_score, 'n_steps', n_steps)
+
 # %%
 plt.figure(figsize=(10,6))
 plt.plot(scores)
@@ -590,7 +586,7 @@ plt.grid()
 plt.xlabel('Episodes')
 plt.ylabel('Scores')
 plt.title('Scores vs Episodes')
-plt.savefig('./maddpg_results/'+agent.run_name+'_scores_vs_episodes.png')
+plt.savefig('./maddpg_results/scores_vs_episodes.png')
 plt.show()
 # %%
 agent_frozen = agent
@@ -607,16 +603,16 @@ acav_hist = []
 score = 0
 done = False
 pcav_hist = []
-pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120)
+# pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120)
 idx = 0
 done = False
 ecav_hist = []
 achieved = False
-while not done:
-# for idx in tqdm(range(env.init_steps_, env.max_steps), ncols=120):
+# while not done:
+for idx in tqdm(range(env.init_steps_, env.max_steps), ncols=120):
     # perform random actions
     # try:
-        # action = #agent.choose_action(ecav, True)
+        # action = agent.choose_action(ecav, True)
         if achieved==True:
             action = 2
         else:
@@ -634,25 +630,25 @@ while not done:
         if idx %100 == 0:        
             acav_hist.append(acav_)
         idx += 1
-        pbar.update(1)
+        # pbar.update(1)
     # except KeyboardInterrupt:
     #     pbar.close()
     #     break
     # if keyboard interrupt then close the progress bar
-pbar.close()
+# pbar.close()
 
 print('Test score %.2f' % score)
 # %%
-plt.figure(figsize=(14, 4))
-plt.imshow(np.array(ecav_hist).T, aspect='auto', cmap='jet',\
-            extent=[0, len(ecav_hist), -1e12*env.tR.item()/2, 1e12*env.tR.item()/2])
-plt.colorbar(label='Power(dBm)')
-plt.xlabel('Tuning Steps')
-plt.ylabel(r'$\mu$' +'(rel)', fontsize=14)
-# plt.xticks(fontsize=14)
-# plt.yticks(fontsize=14)
+# plt.figure(figsize=(14, 4))
+# plt.imshow(np.array(ecav_hist).T, aspect='auto', cmap='jet',\
+#             extent=[0, len(ecav_hist), -1e12*env.tR.item()/2, 1e12*env.tR.item()/2])
+# plt.colorbar(label='Power(dBm)')
+# plt.xlabel('Tuning Steps')
+# plt.ylabel(r'$\mu$' +'(rel)', fontsize=14)
+# # plt.xticks(fontsize=14)
+# # plt.yticks(fontsize=14)
 # plt.xlim(0,40000)
-plt.show()
+# plt.show()
 # %%
 # find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))
@@ -702,7 +698,7 @@ formatter.set_powerlimits((-1, 1))
 plt.gca().xaxis.set_major_formatter(formatter)
 plt.xlabel('Tuning Steps', fontsize=14)
 plt.ylabel(r'$t_R (ps)$', fontsize=14)
-# plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_hist_spec_all_ctrl.png')
+plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_hist_spec_all_ctrl.png')
 plt.show()
 
 # %%
@@ -717,7 +713,7 @@ plt.ylabel(r'$\mu$' +'(rel)', fontsize=14)
 plt.colorbar(label='Power(dBm)')
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
-# plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_hist_ifft_spec_all_ctrl.png')
+plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_hist_ifft_spec_all_ctrl.png')
 plt.show()
 # %% Reward Plot
 plt.figure(figsize=(10, 6))
@@ -725,7 +721,7 @@ plt.plot(r_hist)
 plt.xlabel('Iteration', fontsize=14)
 plt.ylabel('Reward ', fontsize=14)
 plt.grid()
-# plt.savefig('./maddpg_results/'+agent.run_name+'_rewards_spec_all_ctrl.png')
+plt.savefig('./maddpg_results/'+agent.run_name+'_rewards_spec_all_ctrl.png')
 plt.show()
 # %%
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
@@ -741,7 +737,7 @@ plt.ylim(-90,5)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 plt.legend(fontsize=14)
-# plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_spec_all_ctrl.png')
+plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_spec_all_ctrl.png')
 plt.show()
 # %%
 action_hist = np.array(action_hist)

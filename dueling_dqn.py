@@ -77,7 +77,7 @@ class DuelingDQN(nn.Module):
     
 
 class Agent:
-    def __init__(self, n_actions, input_dims, lr=1e-4, mem_size=int(1e6), batch_size=128, gamma=0.99,\
+    def __init__(self, n_actions, input_dims, run_name, lr=1e-4, mem_size=int(1e6), batch_size=128, gamma=0.99,\
                  eps_min=0.01, warm_up=10000, replace=1000, checkpoint_dir='./tmp/dueling_ddqn'):
         
         self.gamma = gamma
@@ -88,11 +88,12 @@ class Agent:
         self.eps_dec = (1-self.eps_min)/self.warm_up
         self.batch_size = batch_size
         self.replace_target_cnt = replace
+        self.run_name = run_name
         
         self.memory = ReplayBuffer(mem_size, input_dims, n_actions)
 
-        self.q_eval = DuelingDQN(lr, n_actions, input_dims, name='dueling_dqn_eval', chkpt_dir=checkpoint_dir)
-        self.q_next = DuelingDQN(lr, n_actions, input_dims, name='dueling_dqn_next', chkpt_dir=checkpoint_dir)
+        self.q_eval = DuelingDQN(lr, n_actions, input_dims, name=run_name+'_dueling_dqn_eval', chkpt_dir=checkpoint_dir)
+        self.q_next = DuelingDQN(lr, n_actions, input_dims, name=run_name+'_dueling_dqn_next', chkpt_dir=checkpoint_dir)
 
         self.q_next.load_state_dict(self.q_eval.state_dict())
         
