@@ -7,7 +7,7 @@ import os
 from copy import deepcopy
 
 class ReplayBuffer:
-    def __init__(self, max_size, input_shape, n_actions):
+    def __init__(self, max_size, input_shape):
         self.mem_size = max_size
         self.mem_cntr = 0
         self.state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
@@ -46,25 +46,24 @@ class DuelingDQN(nn.Module):
         self.checkpoint_dir = chkpt_dir
         self.checkpoint_file = os.path.join(self.checkpoint_dir, name)
 
-        self.fc1 = nn.Linear(*input_dims, fc_dims//2)
-        self.fc2 = nn.Linear(fc_dims, fc_dims)
+        self.seq_encoder = nn.GRU(input_size=input_dims[1], hidden_size=fc_dims, batch_first=True)
+        
+        self.fc_v = nn.Linear(fc_dims, fc_dims)
+        self.fc_a = nn.Linear(fc_dims, fc_dims)
         self.V = nn.Linear(fc_dims, 1)
         self.A = nn.Linear(fc_dims, n_actions)
-
-        self.seq_encoder = nn.GRU(input_size=1, hidden_size=fc_dims//2, batch_first=True)
 
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
         self.loss = nn.MSELoss()
         self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
         self.to(self.device)
     
-    def forward(self, state, power_hist):
-        x = F.relu(self.fc1(state))
-        _, seq_h = self.seq_encoder(power_hist.view(*power_hist.shape, 1))
-        x = T.cat((x, seq_h[0]), dim=1)
-        x = F.relu(self.fc2(x))
-        V = self.V(x)
-        A = self.A(x)
+    def forward(self, state):
+        _, h = self.seq_encoder(state)
+        x_v = F.relu(self.fc_v(h[0]))
+        x_a = F.relu(self.fc_a(h[0]))
+        V = self.V(x_v)
+        A = self.A(x_a)
 
         return V, A
     
@@ -78,8 +77,8 @@ class DuelingDQN(nn.Module):
     
 
 class Agent:
-    def __init__(self, n_actions, input_dims, lr=1e-4, mem_size=int(1e6), batch_size=128, gamma=0.99,\
-                 eps_min=0.01, warm_up=10000, replace=1000, checkpoint_dir='./tmp/dueling_ddqn'):
+    def __init__(self, n_actions, input_dims, run_name, lr=1e-4, mem_size=int(1e6), batch_size=128, gamma=0.99,\
+                 eps_min=0.01, warm_up=10000, replace=1000, checkpoint_dir='./tmp/dueling_ddqn', fc_dims=256):
         
         self.gamma = gamma
         self.epsilon = 1.0
@@ -89,23 +88,23 @@ class Agent:
         self.eps_dec = (1-self.eps_min)/self.warm_up
         self.batch_size = batch_size
         self.replace_target_cnt = replace
+        self.run_name = run_name
         
-        self.memory = ReplayBuffer(mem_size, input_dims, n_actions)
+        self.memory = ReplayBuffer(mem_size, input_dims)
 
-        self.q_eval = DuelingDQN(lr, n_actions, input_dims, name='dueling_dqn_eval', chkpt_dir=checkpoint_dir)
-        self.q_next = DuelingDQN(lr, n_actions, input_dims, name='dueling_dqn_next', chkpt_dir=checkpoint_dir)
+        self.q_eval = DuelingDQN(lr, n_actions, input_dims, fc_dims=fc_dims, name=run_name+'_dueling_dqn_eval', chkpt_dir=checkpoint_dir)
+        self.q_next = DuelingDQN(lr, n_actions, input_dims, fc_dims=fc_dims, name=run_name+'_dueling_dqn_next', chkpt_dir=checkpoint_dir)
 
         
     
-    def choose_action(self, state, pcav_hist, deterministic=False):
+    def choose_action(self, state, deterministic=False):
         state = T.tensor(np.array([state]), dtype=T.float).to(self.q_eval.device)
-        pcav_hist = T.tensor(np.array([pcav_hist]), dtype=T.float).to(self.q_eval.device)
         if deterministic:
-            _, advantage = self.q_eval.forward(state,pcav_hist)
+            _, advantage = self.q_eval.forward(state)
             action = T.argmax(advantage).item()
         else:
             if np.random.random() > self.epsilon:
-                _, advantage = self.q_eval.forward(state,pcav_hist)
+                _, advantage = self.q_eval.forward(state)
                 action = T.argmax(advantage).item()
             else:
                 action = np.random.choice(self.n_actions)
@@ -165,5 +164,5 @@ class Agent:
         nn.utils.clip_grad_norm_(self.q_eval.parameters(), 1)
         self.q_eval.optimizer.step()
         self.decay_epsilon()
-        return loss.item()
+        return loss.item(), q_eval.mean(dim=0).cpu().detach().numpy()
 
