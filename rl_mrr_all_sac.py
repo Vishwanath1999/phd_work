@@ -339,8 +339,8 @@ class RL_MRR_Env():
         self.step_cntr = 0
         self.pcav_hist = []
 
-        # self.power = np.random.uniform(0.12, 0.18, size=(1,))
-        self.power = np.array([0.14])
+        self.power = np.random.uniform(0.12, 0.16, size=(1,))
+        # self.power = np.array([0.14])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
         # # fpmp = fpmp[0]
         # Ain = torch.zeros(1, len(self.mu),dtype=torch.complex128, device=DEVICE)
@@ -465,12 +465,15 @@ class RL_MRR_Env():
         if len(self.pcav_hist) > 10000:
             self.pcav_hist.pop(0)
         
-        if self.step_cntr > 35000 and self.step_cntr < 45000:
-            if np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1]<0.5:
-                done = True
-                reward -= 10
-                print('Primary Sidebands not formed')
-        elif self.step_cntr >= int(0.5*self.max_steps):
+        if self.step_cntr<45000 and self.primary_sidebands_flag==False:
+            self.primary_sidebands_flag = np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1]<0.5
+        
+        if self.step_cntr == 45000 and self.primary_sidebands_flag == False:
+            done = True
+            reward -= 10
+            print('Primary Sidebands not formed')
+            print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
+        elif self.step_cntr-self.init_steps_ >= int(0.5*self.max_steps):
             if torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() < 0.2:
                 done = True
                 reward -= 5
@@ -502,15 +505,16 @@ desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 
-from dueling_dqn import Agent
-agent = Agent(n_actions=3, input_dims=[441], lr=5e-4, warm_up=50000, batch_size=128, gamma=0.99,\
-                eps_min=0.05, replace=1000, checkpoint_dir='./tmp/dueling_ddqn', run_name='ddqn_const_pow')
-print(agent.q_eval)
+from sac_discrete import Agent
+
+agent = Agent(alpha=3e-4, beta=3e-4, input_dims=[441+1], n_actions=3, batch_size=128,
+              run_name='diff_power')
 
 # %%
 # # init wandb run
 wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark')
-wandb.watch(agent.q_eval, log='gradients', log_freq=1000)
+wandb.watch(agent.actor, log='gradients', log_freq=1000)
+wandb.watch(agent.critic_1, log='gradients', log_freq=1000)
 # set the wandb run name
 wandb.run.name = agent.run_name
 # %% MADDPG train loop
@@ -521,14 +525,16 @@ n_games = 20
 global_n_steps = 0
 scores = []
 best_score = -np.inf
-
+den = 0.16-0.12
 for i in range(n_games):
     score = 0
     done = False
     n_steps = 0
     state, acav, ecav = env.reset(10000)
+    logs['pump power'] = env.power
+    obs = np.append(ecav/10, env.power/den)
     while not done:
-        action = agent.choose_action(ecav/10)
+        action = agent.choose_action(obs)
         
         next_state, reward, done, achieved, _, ecav_ = env.step(state, action, desired_spectrum_tensor)
         # log perf action
@@ -537,8 +543,9 @@ for i in range(n_games):
             new_done = False
         else:
             new_done = done    
-        logs['reward'] = reward      
-        agent.remember(ecav/10, action, reward, ecav_/10, new_done)
+        logs['reward'] = reward  
+        obs_ = np.append(ecav_/10, env.power/den)
+        agent.remember(obs, action, reward, obs_, new_done)
         state = next_state
         ecav = ecav_
         score += reward
@@ -547,12 +554,14 @@ for i in range(n_games):
         
         if agent.memory.mem_cntr > 4*agent.batch_size:
             # print('Training...')
-            loss, mean_q = agent.learn(global_n_steps)
-            logs['critic_loss'] = loss
-            for idx,q in enumerate(mean_q):
-                logs['mean_q'+str(idx)] = q
+            cl,al,el,ecoeff = agent.learn()
+            logs['critic_loss'] = cl
+            logs['actor_loss'] = al
+            logs['entropy_loss'] = el
+            logs['entropy_coeff'] = ecoeff
+            # print('critic_loss:', cl, 'actor_loss:', al, 'entropy_loss:', el, 'entropy_coeff:', ecoeff)
 
-        logs['epsilon'] = agent.epsilon
+        # logs['epsilon'] = agent.epsilon
 
         if n_steps>int(0.5*env.max_steps) and done==True:
             
@@ -580,7 +589,7 @@ for i in range(n_games):
         agent.save_model()
 
     print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,'best score %.2f' % best_score, 'n_steps', n_steps)
-
+# wandb.close()
 # %%
 # plt.figure(figsize=(10,6))
 # plt.plot(scores)
@@ -614,11 +623,11 @@ while not done:
 # for idx in tqdm(range(env.init_steps_, env.max_steps), ncols=120):
     # perform random actions
     # try:
-        action = agent.choose_action(ecav, True)
-        # if achieved==True:
-        #     action = 2
-        # else:
-        #     action = 1#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
+        # action = agent.choose_action(ecav, True)
+        if achieved==True:
+            action = 2
+        else:
+            action = 1#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
 
         next_state, reward, done, achieved, acav_, ecav_ = env.step(state, action, desired_spectrum_tensor)
         state = next_state
@@ -661,7 +670,7 @@ plt.grid()
 plt.legend()
 plt.xlabel('Iteration')
 plt.ylabel('Pcav')
-plt.savefig('./maddpg_results/'+agent.run_name+'_pcav_spec_all_ctrl.png')
+# plt.savefig('./maddpg_results/'+agent.run_name+'_pcav_spec_all_ctrl.png')
 plt.show()
 # %%
 # from fastdtw import fastdtw
@@ -700,7 +709,7 @@ formatter.set_powerlimits((-1, 1))
 plt.gca().xaxis.set_major_formatter(formatter)
 plt.xlabel('Tuning Steps', fontsize=14)
 plt.ylabel(r'$t_R (ps)$', fontsize=14)
-plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_hist_spec_all_ctrl.png')
+# plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_hist_spec_all_ctrl.png')
 plt.show()
 
 # %%
@@ -723,7 +732,7 @@ plt.plot(r_hist)
 plt.xlabel('Iteration', fontsize=14)
 plt.ylabel('Reward ', fontsize=14)
 plt.grid()
-plt.savefig('./maddpg_results/'+agent.run_name+'_rewards_spec_all_ctrl.png')
+# plt.savefig('./maddpg_results/'+agent.run_name+'_rewards_spec_all_ctrl.png')
 plt.show()
 # %%
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30

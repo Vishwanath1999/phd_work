@@ -440,15 +440,15 @@ class RL_MRR_Env():
 
         if self.step_cntr < 45000:
             reward = 10*np.mean(self.pcav_hist[-100:])#pcav_mse
-        elif self.step_cntr >= 45000 and self.step_cntr < int(0.45*self.max_steps):
-            reward = 2*np.mean(self.pcav_hist) + 2
+        elif self.step_cntr >= 45000 and self.step_cntr < int(0.5*self.max_steps):
+            reward = 10*np.mean(self.pcav_hist[-100:]) + 1
         else:
-            reward = 2*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 2
+            reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 1
             # reward = np.array(reward).reshape(1,)
         
         if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50:
             achieved = True
-            reward += 5
+            reward += 2
         else:
             achieved = False
 
@@ -473,7 +473,7 @@ class RL_MRR_Env():
             print('Primary Sidebands not formed')
             print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
         elif self.step_cntr-self.init_steps_ >= int(0.5*self.max_steps):
-            if torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() < 0.3:
+            if torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() < 0.2:
                 done = True
                 reward -= 5
                 # print('Pcav Corr:',corr)
@@ -505,7 +505,7 @@ desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=to
 # %%
 
 from dueling_dqn import Agent
-agent = Agent(n_actions=3, input_dims=[441], lr=5e-4, warm_up=50000, batch_size=128, gamma=0.99,\
+agent = Agent(n_actions=3, input_dims=[441+1], lr=5e-4, warm_up=75000, batch_size=128, gamma=0.99,\
                 eps_min=0.05, replace=1000, checkpoint_dir='./tmp/dueling_ddqn', run_name='ddqn_diff_power')
 print(agent.q_eval)
 
@@ -517,21 +517,22 @@ wandb.watch(agent.q_eval, log='gradients', log_freq=1000)
 wandb.run.name = agent.run_name
 # %% MADDPG train loop
 logs={}
-n_games = 20
+n_games = 40
 # r_hist = []
 # scaled_r_hist = []
 global_n_steps = 0
 scores = []
 best_score = -np.inf
-
+den = 0.18-0.12
 for i in range(n_games):
     score = 0
     done = False
     n_steps = 0
     state, acav, ecav = env.reset(10000)
     logs['pump power'] = env.power
+    obs = np.append(ecav/10, env.power/den)
     while not done:
-        action = agent.choose_action(ecav/10)
+        action = agent.choose_action(obs)
         
         next_state, reward, done, achieved, _, ecav_ = env.step(state, action, desired_spectrum_tensor)
         # log perf action
@@ -540,8 +541,9 @@ for i in range(n_games):
             new_done = False
         else:
             new_done = done    
-        logs['reward'] = reward      
-        agent.remember(ecav/10, action, reward, ecav_/10, new_done)
+        logs['reward'] = reward  
+        obs_ = np.append(ecav_/10, env.power/den)
+        agent.remember(obs, action, reward, obs_, new_done)
         state = next_state
         ecav = ecav_
         score += reward
@@ -616,11 +618,12 @@ while not done:
 # for idx in tqdm(range(env.init_steps_, env.max_steps), ncols=120):
     # perform random actions
     # try:
-        # action = #agent.choose_action(ecav, True)
-        if achieved==True:
-            action = 2
-        else:
-            action = 1#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
+        action = agent.choose_action(ecav, True)
+        # action = np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
+        # if achieved==True:
+        #     action = 2
+        # else:
+        #     action = 1#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
 
         next_state, reward, done, achieved, acav_, ecav_ = env.step(state, action, desired_spectrum_tensor)
         state = next_state
@@ -663,7 +666,7 @@ plt.grid()
 plt.legend()
 plt.xlabel('Iteration')
 plt.ylabel('Pcav')
-plt.savefig('./maddpg_results/'+agent.run_name+'_pcav_spec_all_ctrl.png')
+# plt.savefig('./maddpg_results/'+agent.run_name+'_pcav_spec_all_ctrl.png')
 plt.show()
 # %%
 # from fastdtw import fastdtw

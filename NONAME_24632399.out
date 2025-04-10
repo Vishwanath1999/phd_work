@@ -1,0 +1,101 @@
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 4: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 6: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 8: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 10: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 12: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 14: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 16: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 18: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 20: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 22: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 23: BSUB: command not found
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 26: nvidia-smi: command not found
+Loaded module: cuda/12.4
+/zhome/d5/3/214816/.lsbatch/1744271966.24632399.shell: line 31: /appl/cuda/12.4.0/samples/bin/x86_64/linux/release/deviceQuery: No such file or directory
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Currently logged in as: viswacolab (viswacolab-technical-university-of-denmark) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.19.8
+wandb: Run data is saved locally in /zhome/d5/3/214816/viswa/wandb/run-20250410_100019-h8m4wv4m
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run different-sound-96
+wandb: ⭐️ View project at https://wandb.ai/viswacolab-technical-university-of-denmark/maddpg_mrr
+wandb: 🚀 View run at https://wandb.ai/viswacolab-technical-university-of-denmark/maddpg_mrr/runs/h8m4wv4m
+User defined signal 2
+
+------------------------------------------------------------
+Sender: LSF System <lsfadmin@hpc.dtu.dk>
+Subject: Job 24632399: <NONAME> in cluster <dcc> Exited
+
+Job <NONAME> was submitted from host <hpclogin2> by user <viswa> in cluster <dcc> at Thu Apr 10 09:59:26 2025
+Job was executed on host(s) <n-62-31-24>, in queue <hpc>, as user <viswa> in cluster <dcc> at Thu Apr 10 09:59:27 2025
+</zhome/d5/3/214816> was used as the home directory.
+</zhome/d5/3/214816/viswa> was used as the working directory.
+Started at Thu Apr 10 09:59:27 2025
+Terminated at Thu Apr 10 10:16:14 2025
+Results reported at Thu Apr 10 10:16:14 2025
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+#!/bin/sh
+### General options
+### –- specify queue --
+BSUB -q gpuv100
+### -- set the job Name --
+BSUB -J rl_mrr_gru
+### -- ask for number of cores --
+BSUB -n 16
+### -- Select the resources: 1 gpu in exclusive process mode --
+BSUB -gpu "num=1:mode=exclusive_process"
+### -- set walltime limit: hh:mm -- maximum 24 hours for GPU-queues right now
+BSUB -W 24:00
+### -- request 24GB of system memory --
+BSUB -R "rusage[mem=24GB]"
+### -- set the email address --
+BSUB -u viswa@dtu.dk
+### -- send notification at start --
+BSUB -B
+### -- send notification at completion--
+BSUB -N
+### -- Specify the output and error file. %J is the job-id --
+BSUB -o viswa_rl_mrr_gru_%J.out
+BSUB -e viswa_rl_mrr_gru_%J.err
+# -- end of LSF options --
+
+nvidia-smi
+
+# Load the cuda module
+module load cuda/12.4
+
+/appl/cuda/12.4.0/samples/bin/x86_64/linux/release/deviceQuery
+
+# Activate virtual environment
+source my_env/bin/activate
+
+# Run your Python script within the virtual environment
+python rl_mrr_all_ddqn.py
+
+# Deactivate virtual environment after execution (optional)
+deactivate
+
+------------------------------------------------------------
+
+TERM_RUNLIMIT: job killed after reaching LSF run time limit.
+Exited with exit code 140.
+
+Resource usage summary:
+
+    CPU time :                                   951.00 sec.
+    Max Memory :                                 662 MB
+    Average Memory :                             365.50 MB
+    Total Requested Memory :                     1024.00 MB
+    Delta Memory :                               362.00 MB
+    Max Swap :                                   -
+    Max Processes :                              6
+    Max Threads :                                18
+    Run time :                                   1020 sec.
+    Turnaround time :                            1008 sec.
+
+The output (if any) is above this job summary.
+
