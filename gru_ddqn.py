@@ -73,7 +73,7 @@ class DuelingDQN(nn.Module):
     
     def load_checkpoint(self):
         print('... loading checkpoint ...')
-        self.load_state_dict(T.load(self.checkpoint_file))
+        self.load_state_dict(T.load(self.checkpoint_file, weights_only=True))
     
 
 class Agent:
