@@ -338,8 +338,8 @@ class RL_MRR_Env():
         self.step_cntr = 0
         self.pcav_hist = []
 
-        self.power = np.random.uniform(0.12, 0.16, size=(1,))
-        # self.power = np.array([0.18])
+        # self.power = np.random.uniform(0.12, 0.16, size=(1,))
+        self.power = np.array([0.12])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
         # # fpmp = fpmp[0]
         # Ain = torch.zeros(1, len(self.mu),dtype=torch.complex128, device=DEVICE)
@@ -678,7 +678,9 @@ plt.grid()
 plt.legend()
 plt.xlabel('Iteration')
 plt.ylabel('Pcav')
-plt.savefig('./maddpg_results/'+agent.run_name+'_pcav_spec_all_ctrl.png')
+plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_pcav_spec_all_ctrl.png')
 plt.show()
 # %%
 # from fastdtw import fastdtw
@@ -717,14 +719,17 @@ formatter.set_powerlimits((-1, 1))
 plt.gca().xaxis.set_major_formatter(formatter)
 plt.xlabel('Tuning Steps', fontsize=14)
 plt.ylabel(r'$t_R (ps)$', fontsize=14)
-plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_hist_spec_all_ctrl.png')
+plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.tight_layout()
+plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_ecav_hist_spec_all_ctrl.png')
 plt.show()
 
 # %%
 plt.figure(figsize=(14,4))
 spectrum = np.fft.fftshift(np.fft.fft(np.array(acav_hist).T, axis=0), axes=0)
 spectrum_dBm = 10*np.log10(np.abs(spectrum)**2)+30
-spectrum_dBm = np.clip(spectrum_dBm, -60, 10)/10
+spectrum_dBm = np.clip(spectrum_dBm, -60, 10)
 plt.imshow(spectrum_dBm, aspect='auto', cmap='jet'\
             ,extent=[0, len(acav_hist), env.mu.min().item(), env.mu.max().item()])
 plt.xlabel('Tuning Steps', fontsize=14)
@@ -732,7 +737,10 @@ plt.ylabel(r'$\mu$' +'(rel)', fontsize=14)
 plt.colorbar(label='Power(dBm)')
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
-plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_hist_ifft_spec_all_ctrl.png')
+plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.tight_layout()
+plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_ecav_hist_ifft_spec_all_ctrl.png')
 plt.show()
 # %% Reward Plot
 plt.figure(figsize=(10, 6))
@@ -740,23 +748,28 @@ plt.plot(r_hist)
 plt.xlabel('Iteration', fontsize=14)
 plt.ylabel('Reward ', fontsize=14)
 plt.grid()
-plt.savefig('./maddpg_results/'+agent.run_name+'_rewards_spec_all_ctrl.png')
+plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_rewards_spec_all_ctrl.png')
 plt.show()
 # %%
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
 plt.figure(figsize=(14,4))
-plt.vlines(np.arange(len(ecav)), -60*np.ones(len(ecav[-1])), ecav[-1], \
+plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ecav[-1], \
            label='Obtained Spectrum')
-plt.vlines(np.arange(len(desired_spectrum)), -60*np.ones(len(desired_spectrum)),\
+plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5)
-plt.xlabel('Mode no.', fontsize=14)
+plt.xlabel('Rel. Mode no.', fontsize=14)
 plt.ylabel('Power(dBm)', fontsize=14)
 plt.grid()
 plt.ylim(-90,5)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 plt.legend(fontsize=14)
-plt.savefig('./maddpg_results/'+agent.run_name+'_ecav_spec_all_ctrl.png')
+plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.tight_layout()
+plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_ecav_spec_all_ctrl.png')
 plt.show()
 # %%
 action_hist = np.array(action_hist)
@@ -775,7 +788,9 @@ plt.legend()
 plt.grid()
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
-plt.savefig('./maddpg_results/'+agent.run_name+'_actions_spec_all_ctrl.png')
+plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_actions_spec_all_ctrl.png')
 plt.show()
 
 # plt.figure(figsize=(10, 6))
