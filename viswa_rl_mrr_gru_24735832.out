@@ -1,0 +1,29 @@
+Sat Apr 19 10:01:52 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.124.06             Driver Version: 570.124.06     CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  Tesla V100-PCIE-32GB           On  |   00000000:D8:00.0 Off |                    0 |
+| N/A   27C    P0             25W /  250W |       1MiB /  32768MiB |      0%   E. Process |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+DuelingDQN(
+  (seq_encoder): GRU(442, 128, batch_first=True)
+  (fc_v): Linear(in_features=128, out_features=128, bias=True)
+  (fc_a): Linear(in_features=128, out_features=128, bias=True)
+  (V): Linear(in_features=128, out_features=1, bias=True)
+  (A): Linear(in_features=128, out_features=3, bias=True)
+  (loss): MSELoss()
+)
+Reset...

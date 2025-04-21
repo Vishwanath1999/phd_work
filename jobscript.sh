@@ -3,14 +3,15 @@
 ### –- specify queue --
 #BSUB -q gpuv100
 ### -- set the job Name --
-#BSUB -J rl_mrr_gru
+#BSUB -J rl_mrr_gru_sac
 ### -- ask for number of cores --
-#BSUB -n 16
+#BSUB -n 10
+
 ### -- Select the resources: 1 gpu in exclusive process mode --
 #BSUB -gpu "num=1:mode=exclusive_process"
 ### -- set walltime limit: hh:mm -- maximum 24 hours for GPU-queues right now
 #BSUB -W 24:00
-### -- request 24GB of system memory --
+### -- request 30GB of system memory --
 #BSUB -R "rusage[mem=24GB]"
 ### -- set the email address --
 #BSUB -u viswa@dtu.dk
@@ -28,13 +29,11 @@ nvidia-smi
 # Load the cuda module
 module load cuda/12.4
 
-/appl/cuda/12.4.0/samples/bin/x86_64/linux/release/deviceQuery
-
 # Activate virtual environment
 source my_env/bin/activate
 
 # Run your Python script within the virtual environment
-python rl_mrr_all_ddqn.py
+python rl_mrr_cont_det_ctrl.py
 
 # Deactivate virtual environment after execution (optional)
 deactivate

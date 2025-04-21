@@ -198,14 +198,16 @@ class RL_MRR_Env():
         dt = 1
         t_end  = self.sim_tensor['Tscan']*tR
         t_ramp = t_end
-        Nt = int(3e5)
-        self.max_steps = Nt
+        self.Nt = int(3e5)
+        self.max_steps = int(3.5e5)
 
-        self.del_omega_0 = del_omega_init + (1/Nt)*(del_omega_end - del_omega_init)
+        self.del_omega_0 = del_omega_init + (1/self.Nt)*(del_omega_end - del_omega_init)
 
         del_omega_tot = torch.abs(del_omega_end)+torch.abs(del_omega_init)
         del_omega_perc = -1*torch.sign(del_omega_end+del_omega_init)*(torch.abs(del_omega_end+del_omega_init)/2)/del_omega_tot
-        self.t_sim = torch.linspace(-t_ramp[0]/2 + del_omega_perc[0]*t_ramp[0], t_ramp[0]/2 + del_omega_perc[0]*t_ramp[0], Nt, device=DEVICE, dtype=torch.float64)
+        self.t_sim = torch.linspace(-t_ramp[0]/2 + del_omega_perc[0]*t_ramp[0], t_ramp[0]/2 + del_omega_perc[0]*t_ramp[0], self.Nt, device=DEVICE, dtype=torch.float64)
+        self.t_sim_start = -t_ramp[0]/2 + del_omega_perc[0]*t_ramp[0]
+        self.t_sim_step = self.t_sim[1] - self.t_sim[0]
 
         self.pcav_ref = loadmat('ref_check.mat')['Pcomb'].T
         self.primary_sidebands = loadmat('primary_sidebands.mat')['spec'][0]
@@ -338,8 +340,8 @@ class RL_MRR_Env():
         self.step_cntr = 0
         self.pcav_hist = []
 
-        # self.power = np.random.uniform(0.12, 0.16, size=(1,))
-        self.power = np.array([0.15])
+        self.power = np.random.uniform(0.12, 0.16, size=(1,))
+        # self.power = np.array([0.14])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
         # # fpmp = fpmp[0]
         # Ain = torch.zeros(1, len(self.mu),dtype=torch.complex128, device=DEVICE)
@@ -358,9 +360,9 @@ class RL_MRR_Env():
         self.ecav_state = []
         for idx in range(self.init_steps_):
             mul_factor = np.random.choice([1, -1, 0], p=[0.9,0.05,0.05])
-            del_omega = self.current_del_omega + mul_factor*(1/self.max_steps)*(self.del_omega_end - self.del_omega_init)
+            del_omega = self.current_del_omega + mul_factor*(1/self.Nt)*(self.del_omega_end - self.del_omega_init)
 
-            Fdrive_val = self.Fdrive(del_omega, self.t_sim[int(self.step_cntr%self.max_steps)], self.Ain, self.ind_pmp)
+            Fdrive_val = self.Fdrive(del_omega, self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain, self.ind_pmp)
             u0 = self.ssfm_step(self.state, self.step_cntr, self.alpha, self.Dint_shift, del_omega, self.tR, self.gamma, \
                                 self.L, 10, 1e-3, 1, self.kext, Fdrive_val)
             self.step_cntr += 1
@@ -399,17 +401,13 @@ class RL_MRR_Env():
             self.Ein[ii,int(self.mu0+self.ind_pmp[ii])] = torch.sqrt(Ppmp[ii])*len(self.mu)
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
-
-        if int(action) == 0:
-            del_omega = self.current_del_omega - (1/self.max_steps)*(self.del_omega_end - self.del_omega_init)
-        elif int(action) == 1:
-            del_omega = self.current_del_omega + (1/self.max_steps)*(self.del_omega_end - self.del_omega_init)
-        else:
-            del_omega = self.current_del_omega
+        det_delta = action*(2/self.Nt)*(self.del_omega_end - self.del_omega_init)
+        
+        del_omega = self.current_del_omega + det_delta
 
         self.current_del_omega = del_omega
 
-        Fdrive_val = self.Fdrive(del_omega, self.t_sim[int(self.step_cntr%self.max_steps)], self.Ain, self.ind_pmp)
+        Fdrive_val = self.Fdrive(del_omega, self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain, self.ind_pmp)
         u0 = self.ssfm_step(state, self.step_cntr, self.alpha, self.Dint_shift, del_omega, self.tR, self.gamma, \
                             self.L, 10, 1e-3, 1, self.kext, Fdrive_val)
         
@@ -444,7 +442,7 @@ class RL_MRR_Env():
 
         if self.step_cntr < 45000:
             reward = 10*np.mean(self.pcav_hist[-100:])#pcav_mse
-        elif self.step_cntr >= 45000 and self.step_cntr < int(0.5*self.max_steps):
+        elif self.step_cntr >= 45000 and self.step_cntr < int(0.5*self.Nt):
             reward = 10*np.mean(self.pcav_hist[-100:]) + 1
         else:
             reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 1
@@ -476,15 +474,15 @@ class RL_MRR_Env():
             reward -= 10
             print('Primary Sidebands not formed')
             print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
-        elif self.step_cntr-self.init_steps_ >= int(0.5*self.max_steps):
-            if torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() < 0.2:
+        elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt):
+            if torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() < 0.25:
                 done = True
                 reward -= 5
                 # print('Pcav Corr:',corr)
                 print('Spectral Corr:', torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item())
     
-        # if self.step_cntr+1 == self.max_steps:
-        #     done = True
+        if self.step_cntr+1 == self.max_steps:
+            done = True
             # reward += 5
         
         return self.next_state, reward, done, achieved, Acav_np, self.ecav_state
@@ -508,19 +506,20 @@ desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 
-from gru_ddqn import Agent
-agent = Agent(n_actions=3, input_dims=[50,441+1], lr=5e-4, warm_up=75000, batch_size=128, gamma=0.99,fc_dims=128,\
-                eps_min=0.05, replace=1000, checkpoint_dir='./tmp/dueling_ddqn', run_name='gru_ddqn_diff_power', mem_size=int(1e6))
-print(agent.q_eval)
+from sac import SACAgent
+agent = SACAgent(input_dim=[50,441+1], n_actions=1, alpha=3e-4,beta=3e-4,mem_size=int(1e3),\
+                 run_name='mrr_sac', batch_size=128)
+print(agent.actor)
+print(agent.critic_1)
 
 # %%
 # # init wandb run
-# wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark')
-# wandb.watch(agent.q_eval, log='gradients', log_freq=1000)
-# # set the wandb run name
-# wandb.run.name = agent.run_name
+wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark')
+wandb.watch(agent.actor, log='gradients', log_freq=1000)
+# set the wandb run name
+wandb.run.name = agent.run_name
 # %% MADDPG train loop
-'''
+# '''
 logs={}
 n_games = 40
 # r_hist = []
@@ -539,7 +538,7 @@ for i in range(n_games):
     while not done:
         action = agent.choose_action(obs)
         
-        next_state, reward, done, achieved, _, ecav_ = env.step(state, action, desired_spectrum_tensor)
+        next_state, reward, done, achieved, _, ecav_ = env.step(state, action[0], desired_spectrum_tensor)
         # log perf action
         logs['detuning'] = action
         if achieved==True:
@@ -548,7 +547,7 @@ for i in range(n_games):
             new_done = done    
         logs['reward'] = reward  
         
-        obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/0.04),axis=1)
+        obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/den),axis=1)
         obs = obs_   
         agent.remember(obs, action, reward, obs_, new_done)
         state = next_state
@@ -558,24 +557,29 @@ for i in range(n_games):
         n_steps += 1
         
         if agent.memory.mem_cntr > 4*agent.batch_size:
-            # print('Training...')
-            loss, mean_q = agent.learn(global_n_steps)
-            logs['critic_loss'] = loss
-            for idx,q in enumerate(mean_q):
-                logs['mean_q'+str(idx)] = q
+            cl, al, ent_loss, ent_coeff = agent.learn()
+            logs['critic_loss'] = cl
+            logs['actor_loss'] = al
+            logs['entropy_loss'] = ent_loss
+            logs['entropy_coeff'] = ent_coeff
+            # print('Critic loss:', cl, 'Actor loss:', al, 'Entropy loss:', ent_loss, 'Entropy coeff:', ent_coeff)
 
-        logs['epsilon'] = agent.epsilon
-
-        if n_steps>int(0.5*env.max_steps) and done==True:
+        if n_steps>int(0.5*env.Nt) and done==True:
             
-            fig = plt.figure(figsize=(10, 6))
-            plt.plot(np.arange(-220,221, 1),ecav_[-1], label='Obtained')
-            plt.plot(np.arange(-220,221, 1),np.clip(desired_spectrum_dBm, -60,10), label='Desired')
-            plt.grid()
-            plt.legend()
-            plt.xlabel(r'$\mu$' +'(rel)', fontsize=14)
+            fig=plt.figure(figsize=(14,4))
+            plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ecav[-1], \
+                    label='Obtained Spectrum')
+            plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
+                        desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5)
+            plt.xlabel('Rel. Mode no.', fontsize=14)
             plt.ylabel('Power(dBm)', fontsize=14)
-            plt.title('Correlation '+str(np.corrcoef(ecav_, desired_spectrum_dBm)[0,1]), fontsize=14)
+            plt.grid()
+            plt.ylim(-90,5)
+            plt.xticks(fontsize=14)
+            plt.yticks(fontsize=14)
+            plt.legend(fontsize=14)
+            plt.title('Correlation '+str(np.round(np.corrcoef(ecav[-1], np.clip(desired_spectrum_dBm,-60,10))[0,1],2)), fontsize=14)
+            plt.tight_layout()
             wandb.log({"ecav": wandb.Image(fig)})
             plt.close(fig)
 
@@ -589,10 +593,10 @@ for i in range(n_games):
     
     if avg_score > best_score:
         best_score = avg_score
-        agent.save_model()
+        agent.save_models()
 
     print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,'best score %.2f' % best_score, 'n_steps', n_steps)
-'''
+# '''
 # %%
 # plt.figure(figsize=(10,6))
 # plt.plot(scores)
@@ -604,7 +608,7 @@ for i in range(n_games):
 # plt.show()
 # %%
 agent_frozen = agent
-agent.load_model()
+# agent.load_model()
 # # freeze the actor network
 # for param in agent_frozen.actor.parameters():
 #     param.requires_grad = False
@@ -629,13 +633,13 @@ while not done:
     # perform random actions
     # try:
         action = agent.choose_action(obs, True)
-        # action = np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
+        # action = np.random.uniform(-1,1,size=(1,))
         # if achieved==True:
-        #     action = 2
+        #     action = np.array([0])
         # else:
-        #     action = 1#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
+        #     action = np.array([0.5])#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
 
-        next_state, reward, done, achieved, acav_, ecav_ = env.step(state, action, desired_spectrum_tensor)
+        next_state, reward, done, achieved, acav_, ecav_ = env.step(state, action[0], desired_spectrum_tensor)
         state = next_state
         ecav = ecav_
         obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/0.04),axis=1)
@@ -668,6 +672,13 @@ print('Test score %.2f' % score)
 # # plt.yticks(fontsize=14)
 # # plt.xlim(0,40000)
 # plt.show()
+env.power = np.round(env.power, 3)
+# %%
+import os
+
+# Create save directory if not exists
+save_dir = os.path.join('./results', agent.run_name)
+os.makedirs(save_dir, exist_ok=True)
 # %%
 # find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))
@@ -678,31 +689,13 @@ plt.grid()
 plt.legend()
 plt.xlabel('Iteration')
 plt.ylabel('Pcav')
-plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
+plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
-plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_pcav_spec_all_ctrl.png')
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_pcav_spec_all_ctrl.png'))
 plt.show()
-# %%
-# from fastdtw import fastdtw
-# from scipy.spatial.distance import euclidean
-# pcav_ref = loadmat('Pcomb_opt_rl.mat')['Pcomb'].T
-# mag = np.abs(np.array(acav_hist).T)
-# pcav = np.sum(mag, axis=0, keepdims=True).T
-# # print(pcav.shape, pcav_ref.shape)
-# idx = -1
-# distance, path = fastdtw(pcav[0:idx]/np.max(pcav[0:idx]), pcav_ref[0:idx]/np.max(pcav_ref[0:idx]), dist=euclidean)
-# # print(np.corrcoef(pcav[:,0]/np.max(pcav[:,0]), pcav_ref[:,0]/np.max(pcav_ref[:,0])))
-# print(distance, np.exp(-distance))
-# plt.figure(figsize=(10, 6))
-# plt.plot(pcav_ref, label='Reference')
-# plt.plot(pcav[0:idx], label='Obtained')
-# plt.grid()
-# plt.legend()
-# plt.show()
-# # cosine_sim = np.dot(pcav[:,0], pcav_ref[:,0]) / (np.linalg.norm(pcav[:,0]) * np.linalg.norm(pcav_ref[:,0]))
-# # print(cosine_sim)
-# distance = fast_dtw(pcav[0:idx,0]/np.max(pcav[0:idx,0]), pcav_ref[0:idx,0]/np.max(pcav_ref[0:idx,0]))
-# print(distance)
+
 # %%
 import matplotlib.ticker as ticker
 
@@ -719,10 +712,11 @@ formatter.set_powerlimits((-1, 1))
 plt.gca().xaxis.set_major_formatter(formatter)
 plt.xlabel('Tuning Steps', fontsize=14)
 plt.ylabel(r'$t_R (ps)$', fontsize=14)
-plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_ecav_hist_spec_all_ctrl.png')
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_spec_all_ctrl.png'))
 plt.show()
 
 # %%
@@ -737,10 +731,11 @@ plt.ylabel(r'$\mu$' +'(rel)', fontsize=14)
 plt.colorbar(label='Power(dBm)')
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
-plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_ecav_hist_ifft_spec_all_ctrl.png')
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_ifft_spec_all_ctrl.png'))
 plt.show()
 # %% Reward Plot
 plt.figure(figsize=(10, 6))
@@ -748,9 +743,11 @@ plt.plot(r_hist)
 plt.xlabel('Iteration', fontsize=14)
 plt.ylabel('Reward ', fontsize=14)
 plt.grid()
-plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
+plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
-plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_rewards_spec_all_ctrl.png')
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_rewards_spec_all_ctrl.png'))
 plt.show()
 # %%
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
@@ -766,10 +763,11 @@ plt.ylim(-90,5)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 plt.legend(fontsize=14)
-plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_ecav_spec_all_ctrl.png')
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_spec_all_ctrl.png'))
 plt.show()
 # %%
 action_hist = np.array(action_hist)
@@ -788,9 +786,12 @@ plt.legend()
 plt.grid()
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
-plt.title('Pump Power: '+str(env.power)+'mW', fontsize=16, fontweight='bold')
+plt.gca().xaxis.set_major_formatter(formatter)
+plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
-plt.savefig('./maddpg_results/'+agent.run_name+'_'+mod_pow+'_'+'_actions_spec_all_ctrl.png')
+plt.tight_layout()
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_actions_spec_all_ctrl.png'))
 plt.show()
 
 # plt.figure(figsize=(10, 6))
