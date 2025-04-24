@@ -509,20 +509,36 @@ desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
+config = {
+    "n_actions": 3,
+    "input_dims": [50,441+1],
+    "lr": 5e-4,
+    "warm_up": 75000,
+    "batch_size": 128,
+    "gamma": 0.99,
+    "fc_dims": 128,
+    "eps_min": 0.05,
+    "replace": 10000,
+    "run_name": 'gru_noisy_ddqn',
+    "mem_size": int(1e6)
+}
+# %%
 
-from gru_ddqn import Agent
-agent = Agent(n_actions=3, input_dims=[50,441+1], lr=5e-4, warm_up=75000, batch_size=128, gamma=0.99,fc_dims=128,\
-                eps_min=0.05, replace=1000, checkpoint_dir='./tmp/dueling_ddqn', run_name='gru_ddqn_diff_power_v2', mem_size=int(1e6))
+from gru_ddqn_per import Agent
+agent = Agent(n_actions=config['n_actions'], input_dims=config['input_dims'], lr=config['lr'],
+                warm_up=config['warm_up'], batch_size=config['batch_size'], gamma=config['gamma'],
+                fc_dims=config['fc_dims'], eps_min=config['eps_min'], replace=config['replace'],
+                run_name=config['run_name'], mem_size=config['mem_size'])
 print(agent.q_eval)
 
 # %%
 # # init wandb run
-# wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark')
-# wandb.watch(agent.q_eval, log='gradients', log_freq=1000)
-# # set the wandb run name
-# wandb.run.name = agent.run_name
+wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark', config=config)
+wandb.watch(agent.q_eval, log='gradients', log_freq=1000)
+# set the wandb run name
+wandb.run.name = agent.run_name
 # %% MADDPG train loop
-'''
+# '''
 logs={}
 n_games = 40
 # r_hist = []
@@ -550,7 +566,7 @@ for i in range(n_games):
             new_done = done    
         logs['reward'] = reward  
         
-        obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/0.04),axis=1)
+        obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/den),axis=1)
         obs = obs_   
         agent.remember(obs, action, reward, obs_, new_done)
         state = next_state
@@ -561,10 +577,14 @@ for i in range(n_games):
         
         if agent.memory.mem_cntr > 4*agent.batch_size:
             # print('Training...')
-            loss, mean_q = agent.learn(global_n_steps)
+            loss, mean_q, weights = agent.learn(global_n_steps)
             logs['critic_loss'] = loss
             for idx,q in enumerate(mean_q):
                 logs['mean_q'+str(idx)] = q
+            
+            # if weights is not None: 
+            #     hist = np.histogram(weights, bins=50)
+            #     logs['per_weights'] = wandb.Histogram(np_histogram=hist)
 
         logs['epsilon'] = agent.epsilon
 
@@ -600,7 +620,7 @@ for i in range(n_games):
         agent.save_model()
 
     print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,'best score %.2f' % best_score, 'n_steps', n_steps)
-'''
+# '''
 # %%
 # plt.figure(figsize=(10,6))
 # plt.plot(scores)

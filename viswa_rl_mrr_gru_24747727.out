@@ -1,0 +1,48 @@
+Mon Apr 21 22:45:02 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.124.06             Driver Version: 570.124.06     CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  Tesla V100-PCIE-32GB           On  |   00000000:58:00.0 Off |                    0 |
+| N/A   29C    P0             25W /  250W |       1MiB /  32768MiB |      0%   E. Process |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+Actor(
+  (seq_encoder): GRU(442, 128, batch_first=True)
+  (fc1): Linear(in_features=128, out_features=128, bias=True)
+  (mu_layer): Linear(in_features=128, out_features=1, bias=True)
+  (log_std_layer): Linear(in_features=128, out_features=1, bias=True)
+)
+CriticNetwork(
+  (seq_encoder): GRU(442, 128, batch_first=True)
+  (fc1): Linear(in_features=129, out_features=128, bias=True)
+  (q_layer): Linear(in_features=128, out_features=1, bias=True)
+)
+Reset...
+Spectral Corr: 0.106408880017805
+... saving models ...
+episode  0 score 192611.96 average score 192611.96 best score 192611.96 n_steps 150000
+Reset...
+Spectral Corr: 0.106408880017805
+episode  1 score 175334.93 average score 183973.44 best score 192611.96 n_steps 150000
+Reset...
+Spectral Corr: 0.10640888001780502
+episode  2 score 170359.04 average score 179435.31 best score 192611.96 n_steps 150000
+Reset...
+Spectral Corr: 0.10640888001780494
+episode  3 score 173398.75 average score 177926.17 best score 192611.96 n_steps 150000
+Reset...
+Spectral Corr: 0.10640888001780502
+episode  4 score 173932.90 average score 177127.52 best score 192611.96 n_steps 150000
+Reset...
