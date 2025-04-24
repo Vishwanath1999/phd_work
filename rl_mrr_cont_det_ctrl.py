@@ -72,7 +72,7 @@ def fast_dtw(x, y, radius=500):
 # %%
 class RL_MRR_Env():
 
-    def __init__(self):
+    def __init__(self, seq_len=50):
         super(RL_MRR_Env, self).__init__()
 
         self.step_cntr = 0
@@ -212,6 +212,7 @@ class RL_MRR_Env():
         self.pcav_ref = loadmat('ref_check.mat')['Pcomb'].T
         self.primary_sidebands = loadmat('primary_sidebands.mat')['spec'][0]
         # self.pcav_ref = loadmat('Pcomb_rl_allv2.mat')['Pcomb'].T
+        self.seq_len = seq_len
 
     
     def Fdrive(self, del_omega_all, t_sim, Ain, ind_pmp):
@@ -376,7 +377,7 @@ class RL_MRR_Env():
             Acav_np = Acav.numpy()
             curr_pcav = np.sum(np.abs(Acav_np))
             self.pcav_hist.append(curr_pcav)
-            if idx >= self.init_steps_-50:
+            if idx >= self.init_steps_ - self.seq_len:
                 self.ecav_state.append(Ecav_dBm.cpu().numpy())
 
         self.primary_sidebands_flag = False
@@ -401,7 +402,7 @@ class RL_MRR_Env():
             self.Ein[ii,int(self.mu0+self.ind_pmp[ii])] = torch.sqrt(Ppmp[ii])*len(self.mu)
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
-        det_delta = action*(2/self.Nt)*(self.del_omega_end - self.del_omega_init)
+        det_delta = action*(1/self.Nt)*(self.del_omega_end - self.del_omega_init)
         
         del_omega = self.current_del_omega + det_delta
 
@@ -490,7 +491,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env()
+env = RL_MRR_Env(seq_len=50)
 
 # state, acav,ecav = env.reset()
 # plt.plot(ecav)
@@ -505,16 +506,28 @@ desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
+config = {
+    'input_dim': [env.seq_len, 441+1],
+    'n_actions': 1,
+    'alpha': 3e-4,
+    'beta': 3e-4,
+    'mem_size': int(1e6),
+    'run_name': 'mrr_sac_cluster',
+    'batch_size': 128,
+    'dist': 'normal',
+
+}
+# %%
 
 from sac import SACAgent
-agent = SACAgent(input_dim=[50,441+1], n_actions=1, alpha=3e-4,beta=3e-4,mem_size=int(1e3),\
-                 run_name='mrr_sac', batch_size=128)
+agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+                mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'])
 print(agent.actor)
 print(agent.critic_1)
 
 # %%
 # # init wandb run
-wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark')
+wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark', config=config)
 wandb.watch(agent.actor, log='gradients', log_freq=1000)
 # set the wandb run name
 wandb.run.name = agent.run_name
@@ -803,4 +816,20 @@ plt.show()
 # plt.yticks(fontsize=14)
 # plt.savefig('./maddpg_results/'+agent.run_name+'_power_all_ctrl.png')
 # plt.show()
+
+# %%
+import numpy as np
+import matplotlib.pyplot as plt
+
+x = np.random.rand(128)
+# take softmax of x
+x_softmax = np.exp(x) / np.sum(np.exp(x), axis=0)
+# plot histogram of x_softmax using numpy histogram
+x_hist = np.histogram(x_softmax, bins=10, density=True)
+plt.figure(figsize=(10, 6))
+plt.bar(x_hist[1][:-1], x_hist[0], width=np.diff(x_hist[1]), align='edge', edgecolor='black')
+plt.xlabel('Value', fontsize=14)
+plt.ylabel('Frequency', fontsize=14)
+plt.title('Histogram of Softmax Values', fontsize=16, fontweight='bold')
+plt.show()
 # %%

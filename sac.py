@@ -76,7 +76,11 @@ class Actor(nn.Module):
     def sample_action(self, state, reparam=False,deterministic=False):
         mu, std = self.forward(state)
         if deterministic:
-            return T.tanh(mu) * self.max_action, None
+            if self.dist == 'normal':
+                return T.tanh(mu) * self.max_action, None
+            else:
+                mean = mu/(mu+std)
+                return (2*mean - 1)*self.max_action, None
         
         if self.dist == 'normal':
             pi_dist = Normal(mu, std)
@@ -95,6 +99,7 @@ class Actor(nn.Module):
     def save_checkpoint(self):
         T.save(self.state_dict(), self.chkpt_file)
     
+    
     def load_checkpoint(self):
         if os.path.exists(self.chkpt_file):
             self.load_state_dict(T.load(self.chkpt_file, weights_only=True))
@@ -104,6 +109,7 @@ class Actor(nn.Module):
 class CriticNetwork(nn.Module):
     def __init__(self, input_dim, n_actions, lr=3e-4, fc_dim=128, name='sac', chkpt_dir='./tmp/sac'):
         super(CriticNetwork, self).__init__()
+        
         self.seq_encoder = nn.GRU(input_dim[1], fc_dim, batch_first=True)
         self.fc1 = nn.Linear(fc_dim+n_actions, fc_dim)
         self.q_layer = nn.Linear(fc_dim, 1)
@@ -134,7 +140,7 @@ class CriticNetwork(nn.Module):
 
 class SACAgent:
     def __init__(self, input_dim, n_actions, run_name, alpha=3e-4, beta=3e-4, gamma=0.99, tau=0.005, 
-                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal'):
+                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False):
         self.input_dim = input_dim
         self.n_actions = n_actions
         self.run_name = run_name
@@ -161,8 +167,8 @@ class SACAgent:
 
         self.ent_coef_max, self.ent_coef_min = 1, 1e-4
 
-
-        self.memory = ReplayBuffer(input_dim, n_actions, max_size=mem_size)
+        if eval_mode == False:
+            self.memory = ReplayBuffer(input_dim, n_actions, max_size=mem_size)
     
     def choose_action(self, state, deterministic=False):
         state = T.tensor(np.array([state]), dtype=T.float).to(self.actor.device)
@@ -190,8 +196,8 @@ class SACAgent:
             actions_, log_probs_ = self.actor.sample_action(new_state)
             q1_ = self.target_critic_1(new_state, actions_)
             q2_ = self.target_critic_2(new_state, actions_)
-            critic_value = T.min(q1_, q2_).view(-1)
-            target_value = reward + (1-done.int()) * self.gamma * (critic_value - ent_coef * log_probs_)
+            critic_value_ = T.min(q1_, q2_).view(-1)
+            target_value = reward + (1-done.int()) * self.gamma * (critic_value_ - ent_coef * log_probs_)
         
         # Update Critics
         self.critic_1.optimizer.zero_grad()

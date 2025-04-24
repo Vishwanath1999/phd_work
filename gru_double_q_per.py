@@ -4,17 +4,21 @@ import torch.nn.functional as F
 import numpy as np
 import torch.optim as optim
 import os
-from copy import deepcopy
 
-class ReplayBuffer:
-    def __init__(self, max_size, input_shape):
+class PrioritizedReplayBuffer:
+    def __init__(self, max_size, input_shape, alpha=0.6):
         self.mem_size = max_size
         self.mem_cntr = 0
+        self.alpha = alpha
+        self.epsilon = 1e-6  # small constant to avoid zero priority
+
         self.state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.new_state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.action_memory = np.zeros((self.mem_size,), dtype=np.int64)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
+
+        self.priorities = np.zeros((self.mem_size,), dtype=np.float32)
 
     def store_transition(self, state, action, reward, state_, done):
         index = self.mem_cntr % self.mem_size
@@ -24,48 +28,63 @@ class ReplayBuffer:
         self.action_memory[index] = action
         self.terminal_memory[index] = done
 
+        max_prio = self.priorities.max() if self.mem_cntr > 0 else 1.0
+        self.priorities[index] = max_prio  # new sample gets max priority
+
         self.mem_cntr += 1
 
-    def sample_buffer(self, batch_size):
+    def sample_buffer(self, batch_size, beta=0.4):
         max_mem = min(self.mem_cntr, self.mem_size)
+        if max_mem == 0:
+            raise ValueError("Cannot sample from an empty buffer!")
 
-        batch = np.random.choice(max_mem, batch_size, replace=False)
+        # Compute probabilities with alpha
+        scaled_priorities = self.priorities[:max_mem] ** self.alpha
+        sample_probs = scaled_priorities / scaled_priorities.sum()
 
-        states = self.state_memory[batch]
-        actions = self.action_memory[batch]
-        rewards = self.reward_memory[batch]
-        states_ = self.new_state_memory[batch]
-        dones = self.terminal_memory[batch]
+        indices = np.random.choice(max_mem, batch_size, p=sample_probs)
+        
+        # Importance-sampling weights
+        total = max_mem
+        weights = (total * sample_probs[indices]) ** (-beta)
+        weights /= weights.max()  # Normalize
 
-        return states, actions, rewards, states_, dones
+        states = self.state_memory[indices]
+        actions = self.action_memory[indices]
+        rewards = self.reward_memory[indices]
+        states_ = self.new_state_memory[indices]
+        dones = self.terminal_memory[indices]
+
+        return states, actions, rewards, states_, dones, indices, weights
+
+    def update_priorities(self, indices, td_errors):
+        for idx, td_err in zip(indices, td_errors):
+            self.priorities[idx] = abs(td_err) + self.epsilon
+            # Ensure priorities are non-zero and positive
+            self.priorities[idx] = max(self.priorities[idx], self.epsilon)
 
 
-class DuelingDQN(nn.Module):
+class DQN(nn.Module):
     def __init__(self, alpha, n_actions, input_dims, fc_dims=256, name='dueling_dqn', chkpt_dir='./tmp/dueling_ddqn'):
-        super(DuelingDQN, self).__init__()
+        super(DQN, self).__init__()
         self.checkpoint_dir = chkpt_dir
         self.checkpoint_file = os.path.join(self.checkpoint_dir, name)
 
         self.seq_encoder = nn.GRU(input_size=input_dims[1], hidden_size=fc_dims, batch_first=True)
         
-        self.fc_v = nn.Linear(fc_dims, fc_dims)
-        self.fc_a = nn.Linear(fc_dims, fc_dims)
-        self.V = nn.Linear(fc_dims, 1)
-        self.A = nn.Linear(fc_dims, n_actions)
+        self.fc_q = nn.Linear(fc_dims, fc_dims)
+        self.Q = nn.Linear(fc_dims, n_actions)
 
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
-        self.loss = nn.MSELoss()
         self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
         self.to(self.device)
     
     def forward(self, state):
         _, h = self.seq_encoder(state)
-        x_v = F.relu(self.fc_v(h[0]))
-        x_a = F.relu(self.fc_a(h[0]))
-        V = self.V(x_v)
-        A = self.A(x_a)
+        x_q = F.relu(self.fc_q(h[0]))
+        Q = self.Q(x_q)
 
-        return V, A
+        return Q
     
     def save_checkpoint(self):
         print('... saving checkpoint ...')
@@ -90,23 +109,23 @@ class Agent:
         self.replace_target_cnt = replace
         self.run_name = run_name
         
-        if eval_mode ==  False:
-            self.memory = ReplayBuffer(mem_size, input_dims)
+        if eval_mode == False:
+            self.memory = PrioritizedReplayBuffer(max_size=mem_size, input_shape=input_dims, alpha=0.6)
 
-        self.q_eval = DuelingDQN(lr, n_actions, input_dims, fc_dims=fc_dims, name=run_name+'_dueling_dqn_eval', chkpt_dir=checkpoint_dir)
-        self.q_next = DuelingDQN(lr, n_actions, input_dims, fc_dims=fc_dims, name=run_name+'_dueling_dqn_next', chkpt_dir=checkpoint_dir)
+        self.q_eval = DQN(lr, n_actions, input_dims, fc_dims=fc_dims, name=run_name+'_dueling_dqn_eval', chkpt_dir=checkpoint_dir)
+        self.q_next = DQN(lr, n_actions, input_dims, fc_dims=fc_dims, name=run_name+'_dueling_dqn_next', chkpt_dir=checkpoint_dir)
 
         
     
     def choose_action(self, state, deterministic=False):
         state = T.tensor(np.array([state]), dtype=T.float).to(self.q_eval.device)
         if deterministic:
-            _, advantage = self.q_eval.forward(state)
-            action = T.argmax(advantage).item()
+            q = self.q_eval.forward(state)
+            action = T.argmax(q).item()
         else:
             if np.random.random() > self.epsilon:
-                _, advantage = self.q_eval.forward(state)
-                action = T.argmax(advantage).item()
+                q = self.q_eval.forward(state)
+                action = T.argmax(q).item()
             else:
                 action = np.random.choice(self.n_actions)
 
@@ -133,37 +152,43 @@ class Agent:
         self.q_eval.load_checkpoint()
         self.q_next.load_checkpoint()
     
+    def get_beta(self,current_step, beta_start=0.4, beta_frames=500000):
+        beta = beta_start + (1.0 - beta_start) * min(current_step, beta_frames) / beta_frames
+        return beta
+    
     def learn(self, step):
         if self.memory.mem_cntr < self.batch_size:
             return
         
         self.replace_target_network(step)
 
-        state, action, reward, state_, done = self.memory.sample_buffer(self.batch_size)
+        beta = self.get_beta(step)
+        state, action, reward, state_, done, indices_per, weights = self.memory.sample_buffer(self.batch_size, beta=beta)
 
         states = T.tensor(state, dtype=T.float).to(self.q_eval.device)
         states_ = T.tensor(state_, dtype=T.float).to(self.q_eval.device)
         actions = T.tensor(action, dtype=T.int64).to(self.q_eval.device)
         rewards = T.tensor(reward, dtype=T.float).to(self.q_eval.device)
         dones = T.tensor(done).to(self.q_eval.device)
+        weights_ = T.tensor(weights, dtype=T.float).to(self.q_eval.device)
         indices = np.arange(self.batch_size)
 
-        V_s, A_s = self.q_eval.forward(states)
-        V_s_, A_s_ = self.q_next.forward(states_)
-        V_s_eval, A_s_eval = self.q_eval.forward(states_)
-
-        q_pred = T.add(V_s, (A_s-A_s.mean(dim=1, keepdim=True)))[indices, actions]
-        q_next = T.add(V_s_, (A_s_-A_s_.mean(dim=1, keepdim=True)))
-        q_eval = T.add(V_s_eval, (A_s_eval-A_s_eval.mean(dim=1, keepdim=True)))
+        q_pred = self.q_eval.forward(states)[indices, actions]
+        q_next = self.q_next.forward(states_)
+        q_eval = self.q_eval.forward(states_)
 
         max_actions = T.argmax(q_eval, dim=1)
         
         q_target = rewards + self.gamma * q_next[indices, max_actions] * (1-dones.int())
         self.q_eval.optimizer.zero_grad()
-        loss = self.q_eval.loss(q_target, q_pred)#.to(self.q_eval.device)
+        loss = (weights_*(q_target - q_pred)**2).mean()
         loss.backward()
-        nn.utils.clip_grad_norm_(self.q_eval.parameters(), 1)
+        nn.utils.clip_grad_norm_(self.q_eval.parameters(), 0.5)
         self.q_eval.optimizer.step()
         self.decay_epsilon()
-        return loss.item(), q_eval.mean(dim=0).cpu().detach().numpy(), None
+
+        # Update priorities
+        td_errors = (q_target - q_pred).abs().cpu().detach().numpy()
+        self.memory.update_priorities(indices_per, td_errors)
+        return loss.item(), q_eval.mean(dim=0).cpu().detach().numpy(),weights
 
