@@ -519,31 +519,27 @@ config = {
     "fc_dims": 128,
     "eps_min": 0.05,
     "replace": 10000,
-    "run_name": 'gru_ddqn_diff_power_per',
+    "run_name": 'gru_acer',
     "mem_size": int(1e6),
-    "use_noisy_layers": False,
+    "use_noisy_layers": True,
     "use_per":True,
     "epsilon":0.5
 }
 # %%
 
-from gru_ddqn_per import Agent
-agent = Agent(n_actions=config['n_actions'], input_dims=config['input_dims'], lr=config['lr'],
-                warm_up=config['warm_up'], batch_size=config['batch_size'], gamma=config['gamma'],
-                fc_dims=config['fc_dims'], eps_min=config['eps_min'], replace=config['replace'],
-                run_name=config['run_name'], mem_size=config['mem_size'], use_noisy_layer=config['use_noisy_layers'],use_per=config['use_per'],
-                eval=False, epsilon=config['epsilon'])
+from acer_rnn import Agent
 
-print(agent.q_eval)
+agent = Agent(lr=config['lr'], input_dims=config['input_dims'], n_actions=config['n_actions'],fc_dims=config['fc_dims'],
+              batch_size=config['batch_size'], run_name=config['run_name'],eval_mode=not(torch.cuda.is_available()))
 
 # %%
 # # init wandb run
-# wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark', config=config)
-# wandb.watch(agent.q_eval, log='gradients', log_freq=1000)
-# # set the wandb run name
-# wandb.run.name = agent.run_name
+wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark', config=config)
+wandb.watch(agent.actor_critic, log='gradients', log_freq=1000)
+# set the wandb run name
+wandb.run.name = agent.run_name
 # %% MADDPG train loop
-'''
+# '''
 logs={}
 n_games = 40
 # r_hist = []
@@ -560,7 +556,7 @@ for i in range(n_games):
     logs['pump power'] = env.power
     obs = np.concatenate((ecav/10,env.power*np.ones((50,1))/den),axis=1)
     while not done:
-        action = agent.choose_action(obs)
+        action, log_prob = agent.choose_action(obs)
         
         next_state, reward, done, achieved, _, ecav_ = env.step(state, action, desired_spectrum_tensor)
         # log perf action
@@ -573,7 +569,7 @@ for i in range(n_games):
         
         obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/den),axis=1)
         obs = obs_   
-        agent.remember(obs, action, reward, obs_, new_done)
+        agent.remember(obs, log_prob, reward, obs_, new_done)
         state = next_state
         ecav = ecav_
         score += reward
@@ -582,16 +578,9 @@ for i in range(n_games):
         
         if agent.memory.mem_cntr > 4*agent.batch_size:
             # print('Training...')
-            loss, mean_q, weights = agent.learn(global_n_steps)
-            logs['critic_loss'] = loss
-            for idx,q in enumerate(mean_q):
-                logs['mean_q'+str(idx)] = q
-            
-            # if weights is not None: 
-            #     hist = np.histogram(weights, bins=50)
-            #     logs['per_weights'] = wandb.Histogram(np_histogram=hist)
-
-        logs['epsilon'] = agent.epsilon
+            actor_loss, critic_loss = agent.learn()
+            logs['critic_loss'] = critic_loss
+            logs['actor_loss'] = actor_loss
 
         if n_steps>int(0.5*env.Nt) and done==True:
             
@@ -625,7 +614,7 @@ for i in range(n_games):
         agent.save_model()
 
     print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,'best score %.2f' % best_score, 'n_steps', n_steps)
-'''
+# '''
 # %%
 # plt.figure(figsize=(10,6))
 # plt.plot(scores)
@@ -636,7 +625,7 @@ for i in range(n_games):
 # plt.savefig('./maddpg_results/'+agent.run_name+'_scores_vs_episodes.png')
 # plt.show()
 # %%
-# agent_frozen = agent
+agent_frozen = agent
 agent.load_model()
 # # freeze the actor network
 # for param in agent_frozen.actor.parameters():
