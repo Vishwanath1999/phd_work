@@ -6,6 +6,39 @@ import torch.optim as optim
 import os
 import numpy as np
 
+class ReplayBuffer:
+    def __init__(self, max_size, input_shape):
+        self.mem_size = max_size
+        self.mem_cntr = 0
+        self.state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
+        self.new_state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
+        self.action_memory = np.zeros((self.mem_size,), dtype=np.int64)
+        self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
+        self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
+
+    def store_transition(self, state, action, reward, state_, done):
+        index = self.mem_cntr % self.mem_size
+        self.state_memory[index] = state
+        self.new_state_memory[index] = state_
+        self.reward_memory[index] = reward
+        self.action_memory[index] = action
+        self.terminal_memory[index] = done
+
+        self.mem_cntr += 1
+
+    def sample_buffer(self, batch_size):
+        max_mem = min(self.mem_cntr, self.mem_size)
+
+        batch = np.random.choice(max_mem, batch_size, replace=False)
+
+        states = self.state_memory[batch]
+        actions = self.action_memory[batch]
+        rewards = self.reward_memory[batch]
+        states_ = self.new_state_memory[batch]
+        dones = self.terminal_memory[batch]
+
+        return states, actions, rewards, states_, dones
+
 class PrioritizedReplayBuffer:
     def __init__(self, max_size, input_shape, alpha=0.6):
         self.mem_size = max_size
@@ -65,6 +98,7 @@ class PrioritizedReplayBuffer:
             self.priorities[idx] = max(self.priorities[idx], self.epsilon)
 
 # Noisy Linear Layer
+'''
 class NoisyLinear(nn.Module):
     def __init__(self, in_features, out_features, sigma_init=0.017):
         super(NoisyLinear, self).__init__()
@@ -103,8 +137,53 @@ class NoisyLinear(nn.Module):
             weight = self.weight_mu
             bias = self.bias_mu
         return F.linear(x, weight, bias)
-
+'''
 # Noisy Dueling DQN with GRU Encoder
+class NoisyLinear(nn.Module):
+    def __init__(self, in_features, out_features, sigma_init=0.017):
+        super(NoisyLinear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+
+        self.weight_mu = nn.Parameter(T.empty(out_features, in_features))
+        self.weight_sigma = nn.Parameter(T.empty(out_features, in_features))
+        self.register_buffer('weight_epsilon', T.empty(out_features, in_features))
+
+        self.bias_mu = nn.Parameter(T.empty(out_features))
+        self.bias_sigma = nn.Parameter(T.empty(out_features))
+        self.register_buffer('bias_epsilon', T.empty(out_features))
+
+        self.sigma_init = sigma_init
+        self.reset_parameters()
+        self.reset_noise()
+    
+    def __repr__(self):
+        return f"NoisyLinear(in_features={self.in_features}, out_features={self.out_features})"
+
+    def reset_parameters(self):
+        mu_range = 1 / np.sqrt(self.in_features)
+        self.weight_mu.data.uniform_(-mu_range, mu_range)
+        self.weight_sigma.data.fill_(self.sigma_init)
+        self.bias_mu.data.uniform_(-mu_range, mu_range)
+        self.bias_sigma.data.fill_(self.sigma_init)
+
+    def reset_noise(self):
+        epsilon_in = T.randn(self.in_features)
+        epsilon_out = T.randn(self.out_features)
+        # Factorized Gaussian noise
+        def f(x): return x.sign() * x.abs().sqrt()
+        self.weight_epsilon.copy_(f(epsilon_out).outer(f(epsilon_in)))
+        self.bias_epsilon.copy_(f(epsilon_out))
+
+    def forward(self, x):
+        if self.training:
+            weight = self.weight_mu + self.weight_sigma * self.weight_epsilon
+            bias = self.bias_mu + self.bias_sigma * self.bias_epsilon
+        else:
+            weight = self.weight_mu
+            bias = self.bias_mu
+        return F.linear(x, weight, bias)
+
 class NoisyDuelingDQN(nn.Module):
     def __init__(self, alpha, n_actions, input_dims, fc_dims=256, name='noisy_dueling_dqn', chkpt_dir='./tmp/dueling_ddqn'):
         super(NoisyDuelingDQN, self).__init__()
@@ -186,21 +265,25 @@ class DuelingDQN(nn.Module):
 class Agent:
     def __init__(self, n_actions, input_dims, run_name, lr=1e-4, mem_size=int(1e6), batch_size=128, gamma=0.99,\
                  eps_min=0.01, warm_up=10000, replace=1000, checkpoint_dir='./tmp/dueling_ddqn', fc_dims=256, eval=False,
-                 use_noisy_layer=False):
+                 use_noisy_layer=False, use_per=True, epsilon=1):
         
         self.gamma = gamma
-        self.epsilon = 1.0
+        self.epsilon = epsilon
         self.eps_min = eps_min
         self.warm_up = warm_up
         self.n_actions = n_actions
-        self.eps_dec = (1-self.eps_min)/self.warm_up
+        self.eps_dec = (self.epsilon-self.eps_min)/self.warm_up
         self.batch_size = batch_size
         self.replace_target_cnt = replace
         self.run_name = run_name
         self.use_noisy_layer = use_noisy_layer
+        self.use_per = use_per
         
         if eval == False:
-            self.memory = PrioritizedReplayBuffer(max_size=mem_size, input_shape=input_dims, alpha=0.6)
+            if self.use_per:
+                self.memory = PrioritizedReplayBuffer(max_size=mem_size, input_shape=input_dims, alpha=0.6)
+            else:
+                self.memory = ReplayBuffer(max_size=mem_size, input_shape=input_dims)
 
         if self.use_noisy_layer==False:
             self.q_eval = DuelingDQN(lr, n_actions, input_dims, fc_dims=fc_dims, name=run_name+'_dueling_dqn_eval', chkpt_dir=checkpoint_dir)
@@ -214,17 +297,19 @@ class Agent:
         if deterministic:
             self.q_eval.eval()
             _, advantage = self.q_eval.forward(state)
-            action = T.argmax(advantage).item()
-        elif self.use_noisy_layer==False:
+            action = T.argmax(advantage, dim=-1).item()
+        else:
+            if self.use_noisy_layer:
+                self.q_eval.reset_noise()
             if np.random.random() > self.epsilon:
                 _, advantage = self.q_eval.forward(state)
-                action = T.argmax(advantage).item()
+                action = T.argmax(advantage, dim=-1).item()
             else:
                 action = np.random.choice(self.n_actions)
-        else:
-            self.q_eval.reset_noise()
-            _, advantage = self.q_eval.forward(state)
-            action = T.argmax(advantage).item()
+        # else:
+        #     self.q_eval.reset_noise()
+        #     _, advantage = self.q_eval.forward(state)
+        #     action = T.argmax(advantage, dim=-1).item()
         return action
     
     def remember(self, state, action, reward, state_, done):
@@ -259,16 +344,21 @@ class Agent:
         
         self.replace_target_network(step)
 
-        beta = self.get_beta(step)
-        state, action, reward, state_, done, indices_per, weights = self.memory.sample_buffer(self.batch_size, beta=beta)
-
+        if self.use_per:
+            beta = self.get_beta(step)
+            state, action, reward, state_, done, indices_per, weights = self.memory.sample_buffer(self.batch_size, beta=beta)
+            weights_ = T.tensor(weights, dtype=T.float).to(self.q_eval.device)
+        else:
+            state, action, reward, state_, done = self.memory.sample_buffer(self.batch_size)
+            weights_ = T.ones(self.batch_size, device=self.q_eval.device)
+            weights = np.ones((self.batch_size,))
 
         states = T.tensor(state, dtype=T.float).to(self.q_eval.device)
         states_ = T.tensor(state_, dtype=T.float).to(self.q_eval.device)
         actions = T.tensor(action, dtype=T.int64).to(self.q_eval.device)
         rewards = T.tensor(reward, dtype=T.float).to(self.q_eval.device)
         dones = T.tensor(done).to(self.q_eval.device)
-        weights_ = T.tensor(weights, dtype=T.float).to(self.q_eval.device)
+        
         indices = np.arange(self.batch_size)
 
         if self.use_noisy_layer == True:
@@ -292,12 +382,13 @@ class Agent:
         nn.utils.clip_grad_norm_(self.q_eval.parameters(), 1)
         self.q_eval.optimizer.step()
 
-        if self.use_noisy_layer == False:
-            self.decay_epsilon()
+        # if self.use_noisy_layer == False:
+        self.decay_epsilon()
 
-        # Update priorities
-        td_errors = (q_target - q_pred).abs().cpu().detach().numpy()
-        self.memory.update_priorities(indices_per, td_errors)
+         # Update priorities
+        if self.use_per:
+            td_errors = (q_target - q_pred).abs().cpu().detach().numpy()
+            self.memory.update_priorities(indices_per, td_errors)
 
         return loss.item(), q_eval.mean(dim=0).cpu().detach().numpy(), weights
 

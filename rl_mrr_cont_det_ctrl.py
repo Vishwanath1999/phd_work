@@ -527,12 +527,12 @@ print(agent.critic_1)
 
 # %%
 # # init wandb run
-wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark', config=config)
-wandb.watch(agent.actor, log='gradients', log_freq=1000)
-# set the wandb run name
-wandb.run.name = agent.run_name
+# wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark', config=config)
+# wandb.watch(agent.actor, log='gradients', log_freq=1000)
+# # set the wandb run name
+# wandb.run.name = agent.run_name
 # %% MADDPG train loop
-# '''
+'''
 logs={}
 n_games = 40
 # r_hist = []
@@ -609,7 +609,7 @@ for i in range(n_games):
         agent.save_models()
 
     print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,'best score %.2f' % best_score, 'n_steps', n_steps)
-# '''
+'''
 # %%
 # plt.figure(figsize=(10,6))
 # plt.plot(scores)
@@ -620,8 +620,8 @@ for i in range(n_games):
 # plt.savefig('./maddpg_results/'+agent.run_name+'_scores_vs_episodes.png')
 # plt.show()
 # %%
-agent_frozen = agent
-# agent.load_model()
+# agent_frozen = agent
+agent.load_models()
 # # freeze the actor network
 # for param in agent_frozen.actor.parameters():
 #     param.requires_grad = False
@@ -785,14 +785,7 @@ plt.show()
 # %%
 action_hist = np.array(action_hist)
 plt.figure(figsize=(10, 6))
-actions = np.array(action_hist).astype(int)
-plt.plot(actions, label='Actions', color='gray', alpha=0.5)
-
-# Highlight different actions with different colors
-plt.scatter(np.where(actions == 0), actions[actions == 0], color='red', label='Decrease Detuning', marker='o')
-plt.scatter(np.where(actions == 1), actions[actions == 1], color='green', label='Increase Detuning', marker='x')
-plt.scatter(np.where(actions == 2), actions[actions == 2], color='blue', label='No Update', marker='s')
-
+plt.plot(action_hist, label='GHz')
 plt.xlabel('Iteration', fontsize=14)
 plt.ylabel('Action', fontsize=14)
 plt.legend()
@@ -818,18 +811,18 @@ plt.show()
 # plt.show()
 
 # %%
-import numpy as np
-import matplotlib.pyplot as plt
+# import numpy as np
+# import matplotlib.pyplot as plt
 
-x = np.random.rand(128)
-# take softmax of x
-x_softmax = np.exp(x) / np.sum(np.exp(x), axis=0)
-# plot histogram of x_softmax using numpy histogram
-x_hist = np.histogram(x_softmax, bins=10, density=True)
-plt.figure(figsize=(10, 6))
-plt.bar(x_hist[1][:-1], x_hist[0], width=np.diff(x_hist[1]), align='edge', edgecolor='black')
-plt.xlabel('Value', fontsize=14)
-plt.ylabel('Frequency', fontsize=14)
-plt.title('Histogram of Softmax Values', fontsize=16, fontweight='bold')
-plt.show()
+# x = np.random.rand(128)
+# # take softmax of x
+# x_softmax = np.exp(x) / np.sum(np.exp(x), axis=0)
+# # plot histogram of x_softmax using numpy histogram
+# x_hist = np.histogram(x_softmax, bins=10, density=True)
+# plt.figure(figsize=(10, 6))
+# plt.bar(x_hist[1][:-1], x_hist[0], width=np.diff(x_hist[1]), align='edge', edgecolor='black')
+# plt.xlabel('Value', fontsize=14)
+# plt.ylabel('Frequency', fontsize=14)
+# plt.title('Histogram of Softmax Values', fontsize=16, fontweight='bold')
+# plt.show()
 # %%

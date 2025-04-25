@@ -7,3 +7,28 @@ wandb: Run `wandb offline` to turn off syncing.
 wandb: Syncing run stellar-glade-135
 wandb: ⭐️ View project at https://wandb.ai/viswacolab-technical-university-of-denmark/maddpg_mrr
 wandb: 🚀 View run at https://wandb.ai/viswacolab-technical-university-of-denmark/maddpg_mrr/runs/q089xadk
+Traceback (most recent call last):
+  File "/zhome/d5/3/214816/viswa/rl_mrr_all_gru_ddqn_copy.py", line 580, in <module>
+    n_steps += 1
+  File "/zhome/d5/3/214816/viswa/gru_ddqn_per.py", line 169, in learn
+  File "/zhome/d5/3/214816/viswa/gru_ddqn_per.py", line 44, in sample_buffer
+    self.mem_size = max_size
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/numpy/core/_methods.py", line 49, in _sum
+    return umr_sum(a, axis, dtype, out, keepdims, initial, where)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "/zhome/d5/3/214816/viswa/rl_mrr_all_gru_ddqn_copy.py", line 580, in <module>
+    n_steps += 1
+  File "/zhome/d5/3/214816/viswa/gru_ddqn_per.py", line 169, in learn
+  File "/zhome/d5/3/214816/viswa/gru_ddqn_per.py", line 44, in sample_buffer
+    self.mem_size = max_size
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/numpy/core/_methods.py", line 49, in _sum
+    return umr_sum(a, axis, dtype, out, keepdims, initial, where)
+KeyboardInterrupt
+Error in atexit._run_exitfuncs:
+Traceback (most recent call last):
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/wandb/sdk/lib/sock_client.py", line 151, in _send_message
+    self._sendall_with_error_handle(header + data)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/wandb/sdk/lib/sock_client.py", line 130, in _sendall_with_error_handle
+    sent = self._sock.send(data)
+BrokenPipeError: [Errno 32] Broken pipe
