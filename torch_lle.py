@@ -216,20 +216,49 @@ Aout = torch.zeros(len(mu), dtype=torch.complex128, device=device)
 retNL = torch.zeros(len(mu), dtype=torch.complex128, device=device)
 retCPL = torch.zeros(len(mu), dtype=torch.complex128, device=device)
 # %%
-def FFT_Lin(it):
-        return -alpha/2 + 1j*(Dint_shift - del_omega_all[0][it])*tR
+# def FFT_Lin(it):
+#         return -alpha/2 + 1j*(Dint_shift - del_omega_all[0][it])*tR
     
-def NL(uu):
-    return -1j*(gamma*L*torch.abs(uu)**2)
+# def NL(uu):
+#     return -1j*(gamma*L*torch.abs(uu)**2)
+@torch.jit.script
+def FFT_Lin(it: int, alpha: torch.Tensor, Dint_shift: torch.Tensor, del_omega_all: torch.Tensor, tR: torch.Tensor) -> torch.Tensor:
+    '''
+    Linear operator
+    Input:
+        it (int) : Time index
+        alpha (torch.Tensor) : Linewidth enhancement factor
+        Dint_shift (torch.Tensor) : Dispersive operator
+        del_omega_all (torch.Tensor) : Detuning
+        tR (torch.Tensor) : Round trip time
+    Output:
+        torch.Tensor : Linear operator
+    '''
+    return (-alpha / 2) + 1j * (Dint_shift - del_omega_all) * tR
+
+
+# Function for the Nonlinear operator
+@torch.jit.script
+def NL(uu: torch.Tensor, gamma: torch.Tensor, L: torch.Tensor) -> torch.Tensor:
+    '''
+    Nonlinear operator
+    Input:
+        uu (torch.Tensor) : Input field
+        gamma (torch.Tensor) : Nonlinear coefficient
+        L (torch.Tensor) : Length of the resonator
+    Output:
+        torch.Tensor : Nonlinear operator
+    '''
+    return -1j * (gamma * L * torch.square(torch.abs(uu)) )
 # %%
 def ssfm_step(A0, it):
     
     # print((Fdrive(int(it)) + torch.sqrt(kext)*dt).shape)
     # Linear Part
     A0 = A0 + Fdrive(int(it))* torch.sqrt(kext)*dt
-    L_h_prop = torch.exp(FFT_Lin(it)*dt/2)
+    L_h_prop = torch.exp(FFT_Lin(it, alpha,  Dint_shift, del_omega_all, tR)*dt/2)
     A_L_h_prop = torch.fft.ifft(torch.fft.fft(A0)*L_h_prop)
-    NL_h_prop_0 = NL(A0)
+    NL_h_prop_0 = NL(A0, gamma, L)
     A_h_prop = A0.clone()
     A_prop = torch.zeros_like(A0, dtype=torch.complex128, device=device)
 
@@ -267,106 +296,106 @@ def MainSolver(Nt, saved_data, u0):
     for it in tqdm(range(Nt), ncols=120):
         with torch.autocast(device_type=device.type, dtype=torch.float16):
             u0 = ssfm_step(u0, it)
-        param = SaveStatus_Callback(it, Nt, saved_data, u0, param)
-    SaveData(saved_data)
+        # param = SaveStatus_Callback(it, Nt, saved_data, u0, param)
+    # SaveData(saved_data)
 # %%
 MainSolver(Nt, saved_data, u0)
 # %%
-import matplotlib.pyplot as plt
-from scipy.io import loadmat
-import numpy as np
-data = loadmat('SSFM_half_data.mat')
-u_probe = data['u_probe']
+# import matplotlib.pyplot as plt
+# from scipy.io import loadmat
+# import numpy as np
+# data = loadmat('SSFM_half_data.mat')
+# u_probe = data['u_probe']
 
-plt.figure(figsize=(10,3))
-plt.imshow(np.abs(u_probe).T, aspect='auto',cmap='jet')
-plt.colorbar()
-plt.show()
-# %%
-driving_force = data['driving_force']
-detuning = data['detuning'].T
-kext = data['kappa_ext']
-alpha = data['alpha']
-k0 = data['kappa_0']
+# plt.figure(figsize=(10,3))
+# plt.imshow(np.abs(u_probe).T, aspect='auto',cmap='jet')
+# plt.colorbar()
+# plt.show()
+# # %%
+# driving_force = data['driving_force']
+# detuning = data['detuning'].T
+# kext = data['kappa_ext']
+# alpha = data['alpha']
+# k0 = data['kappa_0']
 
-Awg = np.zeros_like(u_probe, dtype=np.complex128)
-Ewg = np.zeros_like(u_probe, dtype=np.complex128)
-Acav = np.zeros_like(u_probe, dtype=np.complex128)
-Ecav = np.zeros_like(u_probe, dtype=np.complex128)
+# Awg = np.zeros_like(u_probe, dtype=np.complex128)
+# Ewg = np.zeros_like(u_probe, dtype=np.complex128)
+# Acav = np.zeros_like(u_probe, dtype=np.complex128)
+# Ecav = np.zeros_like(u_probe, dtype=np.complex128)
 
-wg = driving_force * np.sqrt(1-kext)
-cav = np.sqrt(kext)*u_probe*np.exp(1j*np.pi)
+# wg = driving_force * np.sqrt(1-kext)
+# cav = np.sqrt(kext)*u_probe*np.exp(1j*np.pi)
 
-Awg = (wg+cav)/np.sqrt(u_probe.shape[1])
-Acav = np.sqrt(alpha/2)*u_probe*np.exp(1j*np.pi)/np.sqrt(u_probe.shape[1])
+# Awg = (wg+cav)/np.sqrt(u_probe.shape[1])
+# Acav = np.sqrt(alpha/2)*u_probe*np.exp(1j*np.pi)/np.sqrt(u_probe.shape[1])
 
-Ewg = np.fft.ifftshift(np.fft.ifft(Awg, axis=1, norm='forward'),axes=1)/np.sqrt(u_probe.shape[1]) + 1e-12
-Ecav = np.fft.ifftshift(np.fft.ifft(Acav, axis=1, norm='forward'),axes=1)/np.sqrt(u_probe.shape[1])
+# Ewg = np.fft.ifftshift(np.fft.ifft(Awg, axis=1, norm='forward'),axes=1)/np.sqrt(u_probe.shape[1]) + 1e-12
+# Ecav = np.fft.ifftshift(np.fft.ifft(Acav, axis=1, norm='forward'),axes=1)/np.sqrt(u_probe.shape[1])
 
-Pcomb = np.sum(np.abs(Ecav)**2, axis=1) - np.abs(Ecav[:,220])**2
-Pwg = np.sum(np.abs(Ewg)**2, axis=1)
-Pcav = np.sum(np.abs(Ecav)**2, axis=1)
-# %%
-plt.figure(figsize=(10,3))
-plt.plot(detuning*1e-9/(2*np.pi), np.flip(Pcomb)*1e3)
-plt.xlabel('Detuning (GHz)')
-plt.ylabel('Power (mW)')
-plt.grid()
-plt.show()
-# %%
-plt.figure(figsize=(10,3))
-plt.imshow(np.abs(Acav).T, aspect='auto', cmap='jet')
-plt.colorbar()
-plt.show()
+# Pcomb = np.sum(np.abs(Ecav)**2, axis=1) - np.abs(Ecav[:,220])**2
+# Pwg = np.sum(np.abs(Ewg)**2, axis=1)
+# Pcav = np.sum(np.abs(Ecav)**2, axis=1)
+# # %%
+# plt.figure(figsize=(10,3))
+# plt.plot(detuning*1e-9/(2*np.pi), np.flip(Pcomb)*1e3)
+# plt.xlabel('Detuning (GHz)')
+# plt.ylabel('Power (mW)')
+# plt.grid()
+# plt.show()
+# # %%
+# plt.figure(figsize=(10,3))
+# plt.imshow(np.abs(Acav).T, aspect='auto', cmap='jet')
+# plt.colorbar()
+# plt.show()
 
-# %%
-plt.figure(figsize=(10,3))
-plt.imshow(np.abs(Ecav).T, aspect='auto', cmap='jet')
-plt.colorbar()
-plt.show()
-# %%
-def plot_comb_power(idx, xaxis='freq'):
-    if xaxis == 'modes':
-        x = np.arange(-(len(Ecav[idx])-1)//2, len(Ecav[idx])//2 +1, 1)
-        plt.xlabel('Comb Line Number')
-    elif xaxis == 'freq':
-        x = fpmp.cpu().numpy() + np.arange(-(len(Ecav[idx])-1)//2, len(Ecav[idx])//2 +1, 1)*FSR.cpu().numpy()
-        x = x*1e-12
-    x_ = np.zeros(x.size*3)
-    x_[::3] = x
-    x_[1::3] = x
-    x_[2::3] = x
-    x = x_
+# # %%
+# plt.figure(figsize=(10,3))
+# plt.imshow(np.abs(Ecav).T, aspect='auto', cmap='jet')
+# plt.colorbar()
+# plt.show()
+# # %%
+# def plot_comb_power(idx, xaxis='freq'):
+#     if xaxis == 'modes':
+#         x = np.arange(-(len(Ecav[idx])-1)//2, len(Ecav[idx])//2 +1, 1)
+#         plt.xlabel('Comb Line Number')
+#     elif xaxis == 'freq':
+#         x = fpmp.cpu().numpy() + np.arange(-(len(Ecav[idx])-1)//2, len(Ecav[idx])//2 +1, 1)*FSR.cpu().numpy()
+#         x = x*1e-12
+#     x_ = np.zeros(x.size*3)
+#     x_[::3] = x
+#     x_[1::3] = x
+#     x_[2::3] = x
+#     x = x_
 
-    y = 10*np.log10(np.abs(Ecav[idx])**2)+30
-    y_ = np.zeros(y.size * 3)
-    floor = -100
-    y_[::3] = floor
-    y_[1::3] = y
-    y_[2::3] = floor
-    y = y_
-    # y = np.maximum(y, floor)
-    plt.figure(figsize=(10,3))
-    plt.plot(x, y)
+#     y = 10*np.log10(np.abs(Ecav[idx])**2)+30
+#     y_ = np.zeros(y.size * 3)
+#     floor = -100
+#     y_[::3] = floor
+#     y_[1::3] = y
+#     y_[2::3] = floor
+#     y = y_
+#     # y = np.maximum(y, floor)
+#     plt.figure(figsize=(10,3))
+#     plt.plot(x, y)
     
-    plt.ylabel('Power (dBm)')
-    # plt.title(f'Comb Power at detuning {detuning[idx]*1e-9:.2f} GHz')
-    plt.grid()
-    plt.show()
-# %%
-plot_comb_power(3345)
+#     plt.ylabel('Power (dBm)')
+#     # plt.title(f'Comb Power at detuning {detuning[idx]*1e-9:.2f} GHz')
+#     plt.grid()
+#     plt.show()
+# # %%
+# plot_comb_power(3345)
 
-# %%
-def plot_soliton_time(idx):
-    tr = tR.cpu().numpy()
-    t = np.linspace(-tr/2,tr/2, len(Ecav[idx]))*1e12
+# # %%
+# def plot_soliton_time(idx):
+#     tr = tR.cpu().numpy()
+#     t = np.linspace(-tr/2,tr/2, len(Ecav[idx]))*1e12
 
-    plt.figure(figsize=(10,3))
-    plt.plot(t, np.abs(Acav[idx])**2)
-    plt.xlabel('Time (ps)')
-    plt.ylabel('Power (W)')
-    plt.grid()
-    plt.show()
-# %%
-plot_soliton_time(4000)
-# %%
+#     plt.figure(figsize=(10,3))
+#     plt.plot(t, np.abs(Acav[idx])**2)
+#     plt.xlabel('Time (ps)')
+#     plt.ylabel('Power (W)')
+#     plt.grid()
+#     plt.show()
+# # %%
+# plot_soliton_time(4000)
+# # %%

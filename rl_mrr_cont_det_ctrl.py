@@ -3,72 +3,72 @@ import torch
 import numpy as np
 from scipy.io import loadmat, savemat
 from scipy import constants as cts
-import torch.types
+# import torch.types
 from tqdm import tqdm
-from ipywidgets import interact, widgets
+# from ipywidgets import interact, widgets
 import matplotlib.pyplot as plt
 import pandas as pd
-from fastdtw import fastdtw
-from scipy.spatial.distance import euclidean
-from numba import njit, prange
+# from fastdtw import fastdtw
+# from scipy.spatial.distance import euclidean
+# from numba import njit, prange
 import wandb
 
-DEVICE = 'cpu'
+DEVICE = 'cuda:0'
 C0 = 299792458
 H_BAR = cts.hbar
 # %%
-@njit(fastmath=True)
-def euclidean_distance(x, y):
-    return np.abs(x - y)
+# @njit(fastmath=True)
+# def euclidean_distance(x, y):
+#     return np.abs(x - y)
 
-@njit(fastmath=True)
-def dtw_cost_matrix(x, y, radius):
-    """Computes DTW cost matrix using a windowed approach for efficiency."""
-    n, m = len(x), len(y)
-    cost_matrix = np.full((n + 1, m + 1), np.inf, dtype=np.float64)
-    cost_matrix[0, 0] = 0
+# @njit(fastmath=True)
+# def dtw_cost_matrix(x, y, radius):
+#     """Computes DTW cost matrix using a windowed approach for efficiency."""
+#     n, m = len(x), len(y)
+#     cost_matrix = np.full((n + 1, m + 1), np.inf, dtype=np.float64)
+#     cost_matrix[0, 0] = 0
 
-    for i in prange(1, n + 1):  # Parallelizing outer loop
-        start_j = max(1, i - radius)
-        end_j = min(m + 1, i + radius + 1)
+#     for i in prange(1, n + 1):  # Parallelizing outer loop
+#         start_j = max(1, i - radius)
+#         end_j = min(m + 1, i + radius + 1)
 
-        for j in range(start_j, end_j):
-            cost = euclidean_distance(x[i - 1], y[j - 1])
-            cost_matrix[i, j] = cost + min(
-                cost_matrix[i - 1, j],  # Insertion
-                cost_matrix[i, j - 1],  # Deletion
-                cost_matrix[i - 1, j - 1]  # Match
-            )
+#         for j in range(start_j, end_j):
+#             cost = euclidean_distance(x[i - 1], y[j - 1])
+#             cost_matrix[i, j] = cost + min(
+#                 cost_matrix[i - 1, j],  # Insertion
+#                 cost_matrix[i, j - 1],  # Deletion
+#                 cost_matrix[i - 1, j - 1]  # Match
+#             )
 
-    return cost_matrix[n, m]
+#     return cost_matrix[n, m]
 
-@njit(fastmath=True)
-def downsample(sequence):
-    """Downsamples a sequence by averaging adjacent elements."""
-    length = len(sequence)
-    half_size = length // 2
+# @njit(fastmath=True)
+# def downsample(sequence):
+#     """Downsamples a sequence by averaging adjacent elements."""
+#     length = len(sequence)
+#     half_size = length // 2
 
-    result = np.empty(half_size, dtype=np.float64)
+#     result = np.empty(half_size, dtype=np.float64)
     
-    for i in prange(half_size):
-        result[i] = (sequence[2 * i] + sequence[2 * i + 1]) / 2
+#     for i in prange(half_size):
+#         result[i] = (sequence[2 * i] + sequence[2 * i + 1]) / 2
 
-    return result
+#     return result
 
-@njit(fastmath=True)
-def fast_dtw(x, y, radius=500):
-    """Computes FastDTW with multi-core acceleration."""
-    if len(x) < radius or len(y) < radius:
-        return dtw_cost_matrix(x, y, radius)
+# @njit(fastmath=True)
+# def fast_dtw(x, y, radius=500):
+#     """Computes FastDTW with multi-core acceleration."""
+#     if len(x) < radius or len(y) < radius:
+#         return dtw_cost_matrix(x, y, radius)
     
-    # Downsample (coarse resolution)
-    x_shrink = downsample(x) if len(x) % 2 == 0 else downsample(x[:-1])
-    y_shrink = downsample(y) if len(y) % 2 == 0 else downsample(y[:-1])
+#     # Downsample (coarse resolution)
+#     x_shrink = downsample(x) if len(x) % 2 == 0 else downsample(x[:-1])
+#     y_shrink = downsample(y) if len(y) % 2 == 0 else downsample(y[:-1])
 
-    # Recursive call
-    cost = fast_dtw(x_shrink, y_shrink, radius)
+#     # Recursive call
+#     cost = fast_dtw(x_shrink, y_shrink, radius)
 
-    return cost
+#     return cost
 # %%
 class RL_MRR_Env():
 
@@ -260,7 +260,7 @@ class RL_MRR_Env():
     
     @staticmethod
     @torch.jit.script
-    def FFT_Lin(it: int, alpha: torch.Tensor, Dint_shift: torch.Tensor, del_omega_all: torch.Tensor, tR: torch.Tensor) -> torch.Tensor:
+    def FFT_Lin(alpha: torch.Tensor, Dint_shift: torch.Tensor, del_omega_all: torch.Tensor, tR: torch.Tensor) -> torch.Tensor:
         '''
         Linear operator
         Input:
@@ -288,7 +288,7 @@ class RL_MRR_Env():
         Output:
             torch.Tensor : Nonlinear operator
         '''
-        return -1j * (gamma * L * torch.square(torch.abs(uu)) )
+        return -1j * (gamma * L * torch.square(uu) )
     
     # @staticmethod
     # @torch.jit.script
@@ -298,7 +298,8 @@ class RL_MRR_Env():
                 ) -> torch.Tensor:
         
         A0 = A0 + Fdrive_val * torch.sqrt(kext) * dt
-        L_h_prop = torch.exp(self.FFT_Lin(it, alpha, Dint_shift, del_omega_all, tR) * dt / 2)
+        L_h_prop = self.FFT_Lin(alpha, Dint_shift, del_omega_all, tR) * dt / 2
+        L_h_prop = torch.exp(L_h_prop)
         A_L_h_prop = torch.fft.ifft(torch.fft.fft(A0) * L_h_prop)
         NL_h_prop_0 = self.NL(A0, gamma, L)
         A_h_prop = A0#.clone()
@@ -307,7 +308,7 @@ class RL_MRR_Env():
 
         for _ in range(max_iter):
             err=0
-            NL_h_prop_1 = self.NL(A_h_prop, gamma, L)
+            NL_h_prop_1 = self.NL(torch.abs(A_h_prop), gamma, L)
             NL_prop = (NL_h_prop_0 + NL_h_prop_1) * dt / 2
             A_prop = torch.fft.ifft(torch.fft.fft(A_L_h_prop * torch.exp(NL_prop)) * L_h_prop)
             err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
@@ -374,7 +375,7 @@ class RL_MRR_Env():
             Ecav = torch.fft.fftshift(torch.fft.fft(Acav))
             Ecav_dBm = 10*torch.log10(torch.abs(Ecav)**2)+30
             Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=10)
-            Acav_np = Acav.numpy()
+            Acav_np = Acav.cpu().numpy()
             curr_pcav = np.sum(np.abs(Acav_np))
             self.pcav_hist.append(curr_pcav)
             if idx >= self.init_steps_ - self.seq_len:
@@ -492,15 +493,6 @@ class RL_MRR_Env():
 # torch seed
 # torch.manual_seed(0)
 env = RL_MRR_Env(seq_len=50)
-
-# state, acav,ecav = env.reset()
-# plt.plot(ecav)
-# plt.show()
-# %%
-# state, acav = env.reset()
-# s = (torch.sqrt(env.alpha/2)*state).cpu().numpy()*np.exp(1j*torch.pi)/len(env.mu)
-# del_omega=[]
-# del_omega.append(env.current_del_omega.cpu().numpy())
 # %%
 desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
@@ -512,11 +504,11 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster',
+    'run_name': 'mrr_sac_cluster_v2',
     'batch_size': 128,
-    'dist': 'normal',
-
-}
+    'dist': 'beta',
+    'train':False
+    }
 # %%
 
 from sac import SACAgent
@@ -527,89 +519,91 @@ print(agent.critic_1)
 
 # %%
 # # init wandb run
-# wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark', config=config)
-# wandb.watch(agent.actor, log='gradients', log_freq=1000)
-# # set the wandb run name
-# wandb.run.name = agent.run_name
+if config['train']:
+    wandb.init(project='maddpg_mrr', entity='viswacolab-technical-university-of-denmark', config=config)
+    wandb.watch(agent.actor, log='gradients', log_freq=1000)
+    # set the wandb run name
+    wandb.run.name = agent.run_name
 # %% MADDPG train loop
-'''
-logs={}
-n_games = 40
-# r_hist = []
-# scaled_r_hist = []
-global_n_steps = 0
-scores = []
-best_score = -np.inf
-den = 0.16-0.12
-for i in range(n_games):
-    score = 0
-    done = False
-    n_steps = 0
-    state, acav, ecav = env.reset(10000)
-    logs['pump power'] = env.power
-    obs = np.concatenate((ecav/10,env.power*np.ones((50,1))/den),axis=1)
-    while not done:
-        action = agent.choose_action(obs)
-        
-        next_state, reward, done, achieved, _, ecav_ = env.step(state, action[0], desired_spectrum_tensor)
-        # log perf action
-        logs['detuning'] = action
-        if achieved==True:
-            new_done = False
-        else:
-            new_done = done    
-        logs['reward'] = reward  
-        
-        obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/den),axis=1)
-        obs = obs_   
-        agent.remember(obs, action, reward, obs_, new_done)
-        state = next_state
-        ecav = ecav_
-        score += reward
-        # r_hist.append(reward)
-        n_steps += 1
-        
-        if agent.memory.mem_cntr > 4*agent.batch_size:
-            cl, al, ent_loss, ent_coeff = agent.learn()
-            logs['critic_loss'] = cl
-            logs['actor_loss'] = al
-            logs['entropy_loss'] = ent_loss
-            logs['entropy_coeff'] = ent_coeff
-            # print('Critic loss:', cl, 'Actor loss:', al, 'Entropy loss:', ent_loss, 'Entropy coeff:', ent_coeff)
-
-        if n_steps>int(0.5*env.Nt) and done==True:
+# '''
+if config['train']:
+    logs={}
+    n_games = 40
+    # r_hist = []
+    # scaled_r_hist = []
+    global_n_steps = 0
+    scores = []
+    best_score = -np.inf
+    den = 0.16-0.12
+    for i in range(n_games):
+        score = 0
+        done = False
+        n_steps = 0
+        state, acav, ecav = env.reset(10000)
+        logs['pump power'] = env.power
+        obs = np.concatenate((ecav/10,env.power*np.ones((50,1))/den),axis=1)
+        while not done:
+            action = agent.choose_action(obs)
             
-            fig=plt.figure(figsize=(14,4))
-            plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ecav[-1], \
-                    label='Obtained Spectrum')
-            plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
-                        desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5)
-            plt.xlabel('Rel. Mode no.', fontsize=14)
-            plt.ylabel('Power(dBm)', fontsize=14)
-            plt.grid()
-            plt.ylim(-90,5)
-            plt.xticks(fontsize=14)
-            plt.yticks(fontsize=14)
-            plt.legend(fontsize=14)
-            plt.title('Correlation '+str(np.round(np.corrcoef(ecav[-1], np.clip(desired_spectrum_dBm,-60,10))[0,1],2)), fontsize=14)
-            plt.tight_layout()
-            wandb.log({"ecav": wandb.Image(fig)})
-            plt.close(fig)
+            next_state, reward, done, achieved, _, ecav_ = env.step(state, action[0], desired_spectrum_tensor)
+            # log perf action
+            logs['detuning'] = action
+            if achieved==True:
+                new_done = False
+            else:
+                new_done = done    
+            logs['reward'] = reward  
+            
+            obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/den),axis=1)
+            obs = obs_   
+            agent.remember(obs, action, reward, obs_, new_done)
+            state = next_state
+            ecav = ecav_
+            score += reward
+            # r_hist.append(reward)
+            n_steps += 1
+            
+            if agent.memory.mem_cntr > 4*agent.batch_size:
+                cl, al, ent_loss, ent_coeff = agent.learn()
+                logs['critic_loss'] = cl
+                logs['actor_loss'] = al
+                logs['entropy_loss'] = ent_loss
+                logs['entropy_coeff'] = ent_coeff
+                # print('Critic loss:', cl, 'Actor loss:', al, 'Entropy loss:', ent_loss, 'Entropy coeff:', ent_coeff)
+
+            if n_steps>int(0.5*env.Nt) and done==True:
+                
+                fig=plt.figure(figsize=(14,4))
+                plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ecav[-1], \
+                        label='Obtained Spectrum')
+                plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
+                            desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5)
+                plt.xlabel('Rel. Mode no.', fontsize=14)
+                plt.ylabel('Power(dBm)', fontsize=14)
+                plt.grid()
+                plt.ylim(-90,5)
+                plt.xticks(fontsize=14)
+                plt.yticks(fontsize=14)
+                plt.legend(fontsize=14)
+                plt.title('Correlation '+str(np.round(np.corrcoef(ecav[-1], np.clip(desired_spectrum_dBm,-60,10))[0,1],2)), fontsize=14)
+                plt.tight_layout()
+                wandb.log({"ecav": wandb.Image(fig)})
+                plt.close(fig)
 
 
-        if global_n_steps%100 == 0:
-            wandb.log(logs)
+            if global_n_steps%100 == 0:
+                wandb.log(logs)
 
-        global_n_steps += 1
-    scores.append(score)
-    avg_score = np.mean(scores[-5:])
-    
-    if avg_score > best_score:
-        best_score = avg_score
-        agent.save_models()
+            global_n_steps += 1
+        scores.append(score)
+        avg_score = np.mean(scores[-5:])
+        
+        if avg_score > best_score:
+            best_score = avg_score
+            agent.save_models()
 
-    print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,'best score %.2f' % best_score, 'n_steps', n_steps)
-'''
+        print('episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,'best score %.2f' % best_score, 'n_steps', n_steps)
+# '''
 # %%
 # plt.figure(figsize=(10,6))
 # plt.plot(scores)
@@ -621,7 +615,7 @@ for i in range(n_games):
 # plt.show()
 # %%
 # agent_frozen = agent
-agent.load_models()
+# agent.load_models()
 # # freeze the actor network
 # for param in agent_frozen.actor.parameters():
 #     param.requires_grad = False
