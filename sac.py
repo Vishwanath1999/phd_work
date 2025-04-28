@@ -105,6 +105,36 @@ class Actor(nn.Module):
             self.load_state_dict(T.load(self.chkpt_file, weights_only=True))
         else:
             print('No checkpoint found at {}'.format(self.chkpt_file))
+    
+    def save_jit(self, example_input=None, filename=None):
+        """
+        Save the model as a TorchScript JIT file.
+        If example_input is provided, uses tracing; otherwise, uses scripting.
+        """
+        if filename is None:
+            filename = self.chkpt_file + "_jit.pt"
+        self.eval()
+        if example_input is not None:
+            # Trace the model (requires example input)
+            scripted = T.jit.trace(self, example_input.to(self.device))
+        else:
+            # Script the model (no example input needed, but all control flow must be TorchScript compatible)
+            scripted = T.jit.script(self)
+        T.jit.save(scripted, filename)
+        print(f"JIT model saved to {filename}")
+
+    @staticmethod
+    def load_jit(filename, device=None):
+        """
+        Load a TorchScript JIT model from file.
+        Returns the loaded scripted model.
+        """
+        if device is None:
+            device = T.device('cuda' if T.cuda.is_available() else 'cpu')
+        scripted = T.jit.load(filename, map_location=device)
+        scripted.eval()
+        print(f"JIT model loaded from {filename}")
+        return scripted
 
 class CriticNetwork(nn.Module):
     def __init__(self, input_dim, n_actions, lr=3e-4, fc_dim=128, name='sac', chkpt_dir='./tmp/sac'):
