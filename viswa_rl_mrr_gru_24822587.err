@@ -1,7 +1,0 @@
-Loaded module: cuda/12.4
-Traceback (most recent call last):
-  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 601, in <module>
-    wandb.log(logs)
-  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/wandb/sdk/lib/preinit.py", line 36, in preinit_wrapper
-    raise wandb.Error(f"You must call wandb.init() before {name}()")
-wandb.errors.errors.Error: You must call wandb.init() before wandb.log()

@@ -1,0 +1,9 @@
+Loaded module: cuda/12.4
+Traceback (most recent call last):
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 624, in <module>
+    state, acav, ecav = env.reset(10000)
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 368, in reset
+    u0 = self.ssfm_step(self.state, self.step_cntr, self.alpha, self.Dint_shift, del_omega, self.tR, self.gamma, \
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 301, in ssfm_step
+    L_h_prop = self.FFT_Lin(alpha, Dint_shift, del_omega_all, tR) * dt / 2
+RuntimeError: UNSUPPORTED DTYPE: complex
