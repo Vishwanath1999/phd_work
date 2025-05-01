@@ -13,7 +13,7 @@ import pandas as pd
 # from numba import njit, prange
 import wandb
 
-DEVICE = 'cuda:0'
+DEVICE = 'cpu'
 C0 = 299792458
 H_BAR = cts.hbar
 # %%
@@ -72,14 +72,14 @@ H_BAR = cts.hbar
 # %%
 class RL_MRR_Env():
 
-    def __init__(self, seq_len=50):
+    def __init__(self, seq_len=50, p_max=0.3, p_min=0.1):
         super(RL_MRR_Env, self).__init__()
 
         self.step_cntr = 0
         
-        self.disp = loadmat('disp.mat')
-        self.res = loadmat('res.mat')
-        self.sim = loadmat('sim.mat')
+        self.disp = loadmat('disp_copy.mat')
+        self.res = loadmat('res_copy.mat')
+        self.sim = loadmat('sim_copy.mat')
 
 
         self.sim['DKS_init'] = np.array([complex(x.strip()) for x in self.sim['DKS_init']])
@@ -213,6 +213,8 @@ class RL_MRR_Env():
         self.primary_sidebands = loadmat('primary_sidebands.mat')['spec'][0]
         # self.pcav_ref = loadmat('Pcomb_rl_allv2.mat')['Pcomb'].T
         self.seq_len = seq_len
+        self.p_max = p_max
+        self.p_min = p_min
 
     
     def Fdrive(self, del_omega_all, t_sim, Ain, ind_pmp):
@@ -342,7 +344,7 @@ class RL_MRR_Env():
         self.step_cntr = 0
         self.pcav_hist = []
 
-        self.power = np.random.uniform(0.12, 0.16, size=(1,))
+        self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
         # self.power = np.array([0.14])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
         # # fpmp = fpmp[0]
@@ -492,7 +494,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=50)
+env = RL_MRR_Env(seq_len=50, p_max=0.2, p_min=0.1)
 # %%
 desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
@@ -504,16 +506,19 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_v2',
+    'run_name': 'mrr_sac_cluster_v3',
     'batch_size': 128,
-    'dist': 'beta',
-    'train':False
+    'dist': 'normal',
+    'train':True,
+    'p_max': env.p_max,
+    'p_min': env.p_min,
     }
 # %%
 
 from sac import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
-                mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'])
+                mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
+                eval_mode=not(torch.cuda.is_available()))
 print(agent.actor)
 print(agent.critic_1)
 
@@ -528,20 +533,20 @@ if config['train']:
 # '''
 if config['train']:
     logs={}
-    n_games = 40
+    n_games = 100
     # r_hist = []
     # scaled_r_hist = []
     global_n_steps = 0
     scores = []
     best_score = -np.inf
-    den = 0.16-0.12
+    den = env.p_max - env.p_min
     for i in range(n_games):
         score = 0
         done = False
         n_steps = 0
         state, acav, ecav = env.reset(10000)
         logs['pump power'] = env.power
-        obs = np.concatenate((ecav/10,env.power*np.ones((50,1))/den),axis=1)
+        obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
         while not done:
             action = agent.choose_action(obs)
             
@@ -554,7 +559,7 @@ if config['train']:
                 new_done = done    
             logs['reward'] = reward  
             
-            obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/den),axis=1)
+            obs_ = np.concatenate((ecav_/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
             obs = obs_   
             agent.remember(obs, action, reward, obs_, new_done)
             state = next_state
@@ -621,8 +626,8 @@ if config['train']:
 #     param.requires_grad = False
 # %%
 state, acav, ecav = env.reset(10000)
-den = 0.16-0.12
-obs = np.concatenate((ecav/10,env.power*np.ones((50,1))/den),axis=1)
+den = env.p_max - env.p_min
+obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
 print('Chosen power:', env.power)
 r_hist = []
 action_hist = []
@@ -649,7 +654,7 @@ while not done:
         next_state, reward, done, achieved, acav_, ecav_ = env.step(state, action[0], desired_spectrum_tensor)
         state = next_state
         ecav = ecav_
-        obs_ = np.concatenate((ecav_/10,env.power*np.ones((50,1))/0.04),axis=1)
+        obs_ = np.concatenate((ecav_/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
         obs = obs_
         score += reward
         curr_pcav = np.sum(np.abs(acav_))

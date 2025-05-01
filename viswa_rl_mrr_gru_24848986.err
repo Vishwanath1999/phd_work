@@ -1,0 +1,29 @@
+Loaded module: cuda/12.4
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Currently logged in as: viswacolab (viswacolab-technical-university-of-denmark) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: creating run
+wandb: Tracking run with wandb version 0.19.8
+wandb: Run data is saved locally in /zhome/d5/3/214816/viswa/wandb/run-20250501_125632-e6ucsjb7
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run frosty-river-162
+wandb: ⭐️ View project at https://wandb.ai/viswacolab-technical-university-of-denmark/maddpg_mrr
+wandb: 🚀 View run at https://wandb.ai/viswacolab-technical-university-of-denmark/maddpg_mrr/runs/e6ucsjb7
+Traceback (most recent call last):
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 572, in <module>
+    cl, al, ent_loss, ent_coeff = agent.learn()
+  File "/zhome/d5/3/214816/viswa/sac_v2.py", line 246, in learn
+    critic_loss.backward()
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/_tensor.py", line 521, in backward
+    torch.autograd.backward(
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/autograd/__init__.py", line 289, in backward
+    _engine_run_backward(
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/autograd/graph.py", line 769, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+KeyboardInterrupt
+Error in atexit._run_exitfuncs:
+Traceback (most recent call last):
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/wandb/sdk/lib/sock_client.py", line 151, in _send_message
+    self._sendall_with_error_handle(header + data)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/wandb/sdk/lib/sock_client.py", line 130, in _sendall_with_error_handle
+    sent = self._sock.send(data)
+BrokenPipeError: [Errno 32] Broken pipe
