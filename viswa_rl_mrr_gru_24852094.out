@@ -1,0 +1,36 @@
+Thu May  1 20:55:26 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.133.20             Driver Version: 570.133.20     CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100 80GB PCIe          On  |   00000000:CA:00.0 Off |                    0 |
+| N/A   53C    P0             52W /  300W |       0MiB /  81920MiB |      0%   E. Process |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+Actor(
+  (seq_encoder): GRU(442, 128, batch_first=True)
+  (fc1): Linear(in_features=128, out_features=128, bias=True)
+  (mu_layer): Linear(in_features=128, out_features=1, bias=True)
+  (log_std_layer): Linear(in_features=128, out_features=1, bias=True)
+)
+CriticNetwork(
+  (seq_encoder): GRU(442, 128, batch_first=True)
+  (fc1): Linear(in_features=129, out_features=128, bias=True)
+  (q_layer): Linear(in_features=128, out_features=1, bias=True)
+)
+... loading models ...
+Reset...
+Chosen power: [0.1236247]
+Spectral Corr: 0.24998969267294818
+Test score 1198418.21
