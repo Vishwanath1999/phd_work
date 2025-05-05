@@ -77,9 +77,9 @@ class RL_MRR_Env():
 
         self.step_cntr = 0
         
-        self.disp = loadmat('disp.mat')
-        self.res = loadmat('res.mat')
-        self.sim = loadmat('sim.mat')
+        self.disp = loadmat('disp_copy.mat')
+        self.res = loadmat('res_copy.mat')
+        self.sim = loadmat('sim_copy.mat')
 
 
         self.sim['DKS_init'] = np.array([complex(x.strip()) for x in self.sim['DKS_init']])
@@ -532,7 +532,7 @@ agent = Agent(n_actions=config['n_actions'], input_dims=config['input_dims'], lr
                 warm_up=config['warm_up'], batch_size=config['batch_size'], gamma=config['gamma'],
                 fc_dims=config['fc_dims'], eps_min=config['eps_min'], replace=config['replace'],
                 run_name=config['run_name'], mem_size=config['mem_size'], use_noisy_layer=config['use_noisy_layers'],use_per=config['use_per'],
-                eval=False, epsilon=config['epsilon'])
+                eval=True, epsilon=config['epsilon'])
 
 print(agent.q_eval)
 
@@ -661,12 +661,12 @@ while not done:
 # for idx in tqdm(range(env.init_steps_, int(1.5*env.max_steps)), ncols=120):
     # perform random actions
     # try:
-        action = agent.choose_action(obs, True)
+        # action = agent.choose_action(obs, True)
         # action = np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
-        # if achieved==True:
-        #     action = 2
-        # else:
-        #     action = 1#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
+        if achieved==True:
+            action = 2
+        else:
+            action = 1#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
 
         next_state, reward, done, achieved, acav_, ecav_ = env.step(state, action, desired_spectrum_tensor)
         state = next_state
@@ -744,8 +744,8 @@ plt.ylabel(r'$t_R (ps)$', fontsize=14)
 plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_spec_all_ctrl.png'))
+# if idx > int(0.5*env.max_steps):
+#     plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_spec_all_ctrl.png'))
 plt.show()
 
 # %%
