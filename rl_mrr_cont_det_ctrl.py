@@ -197,7 +197,7 @@ class RL_MRR_Env():
         t_end  = self.sim_tensor['Tscan']*tR
         t_ramp = t_end
         self.Nt = int(3e5)
-        self.max_steps = int(3.5e5)
+        self.max_steps = int(4e5)
 
         self.del_omega_0 = del_omega_init + (1/self.Nt)*(del_omega_end - del_omega_init)
 
@@ -468,7 +468,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=50, p_max=0.16, p_min=0.12)
+env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12)
 # %%
 desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
@@ -842,7 +842,7 @@ def run_test_processes(run_id, save_dir):
     if idx > int(0.9*env.max_steps):
         print('Idx:', idx)
         # save the reward history
-        np.save(os.path.join(save_dir, mod_pow + '_reward_hist_spec_all_ctrl.npy'), r_hist)
+        np.save(os.path.join(save_dir, mod_pow + '_reward_hist_spec_all_ctrl_v2.npy'), r_hist)
 # %%
 # write a function to load the reward history and plot it
 def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
@@ -890,8 +890,8 @@ def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
     sigma = np.array(rolling_std)
 
     plt.figure(figsize=(7, 5))
-    plt.plot(steps, mu, label=label, color=color)
-    plt.fill_between(steps, mu - sigma, mu + sigma, color=color, alpha=0.3, label=r'$\mu \pm \sigma$')
+    plt.plot(steps, mu, color=color)
+    plt.fill_between(steps, mu - sigma, mu + sigma, color=color, alpha=0.3)
     plt.xlabel('Iteration', fontsize=14)
     plt.ylabel('Reward', fontsize=14)
     plt.xticks(fontsize=14)
@@ -902,10 +902,10 @@ def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
     formatter.set_powerlimits((-1, 1))
     plt.gca().xaxis.set_major_formatter(formatter)
     # plt.title('Reward Rolling Mean ± Std', fontsize=16, fontweight='bold')
-    plt.legend(fontsize=14)
+    # plt.legend(fontsize=14)
     plt.grid()
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'reward_histories.png'))
+    plt.savefig(os.path.join(save_dir, 'reward_histories2.png'))
     plt.show()
 # %%
 import torch.multiprocessing as mp

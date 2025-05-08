@@ -1,0 +1,371 @@
+Loaded module: cuda/12.4
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "<string>", line 1, in <module>
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+    prepare(preparation_data)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+    main_content = runpy.run_path(main_path,
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    exitcode = _main(fd, parent_sentinel)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+    return _run_module_code(code, init_globals, run_name,
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+    prepare(preparation_data)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+    _run_code(code, mod_globals, init_globals,
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+    _fixup_main_from_path(data['init_main_from_path'])
+    exec(code, run_globals)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+    main_content = runpy.run_path(main_path,
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+    exec(code, run_globals)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+    prepare(preparation_data)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+    exitcode = _main(fd, parent_sentinel)
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    prepare(preparation_data)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+    main_content = runpy.run_path(main_path,
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+    main_content = runpy.run_path(main_path,
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    _run_code(code, mod_globals, init_globals,
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+    exec(code, run_globals)
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+    return _run_module_code(code, init_globals, run_name,
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+    exitcode = _main(fd, parent_sentinel)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+    exec(code, run_globals)
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+    prepare(preparation_data)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+    main_content = runpy.run_path(main_path,
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    exitcode = _main(fd, parent_sentinel)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+    return _run_module_code(code, init_globals, run_name,
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+    prepare(preparation_data)
+    _run_code(code, mod_globals, init_globals,
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    exitcode = _main(fd, parent_sentinel)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+    prepare(preparation_data)
+    main_content = runpy.run_path(main_path,
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    exitcode = _main(fd, parent_sentinel)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+    return _run_module_code(code, init_globals, run_name,
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+    main_content = runpy.run_path(main_path,
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    prepare(preparation_data)
+    _run_code(code, mod_globals, init_globals,
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+    exec(code, run_globals)
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+    main_content = runpy.run_path(main_path,
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    exec(code, run_globals)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 116, in spawn_main
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+    exitcode = _main(fd, parent_sentinel)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+    return _run_module_code(code, init_globals, run_name,
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+    prepare(preparation_data)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+    _run_code(code, mod_globals, init_globals,
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+    exitcode = _main(fd, parent_sentinel)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 125, in _main
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    exec(code, run_globals)
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+    prepare(preparation_data)
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 236, in prepare
+    main_content = runpy.run_path(main_path,
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/usr/lib64/python3.9/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+  File "/usr/lib64/python3.9/runpy.py", line 288, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+    return _run_module_code(code, init_globals, run_name,
+  File "/usr/lib64/python3.9/runpy.py", line 97, in _run_module_code
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+    exec(code, run_globals)
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+    _run_code(code, mod_globals, init_globals,
+  File "/usr/lib64/python3.9/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/zhome/d5/3/214816/viswa/rl_mrr_cont_det_ctrl.py", line 493, in <module>
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+    agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
+  File "/zhome/d5/3/214816/viswa/sac.py", line 186, in __init__
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+    self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+  File "/zhome/d5/3/214816/viswa/sac.py", line 61, in __init__
+    self.to(self.device)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+    self.to(self.device)
+    self.to(self.device)
+    self.to(self.device)
+    self.to(self.device)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+    self.to(self.device)
+    self.to(self.device)
+    self.to(self.device)
+    self.to(self.device)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+    self.to(self.device)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1174, in to
+    return self._apply(convert)
+    return self._apply(convert)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+    return self._apply(convert)
+    return self._apply(convert)
+    return self._apply(convert)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+    return self._apply(convert)
+    return self._apply(convert)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+    return self._apply(convert)
+    return self._apply(convert)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+    return self._apply(convert)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 780, in _apply
+    module._apply(fn)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+    module._apply(fn)
+    module._apply(fn)
+    module._apply(fn)
+    module._apply(fn)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+    module._apply(fn)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+    module._apply(fn)
+    module._apply(fn)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+    module._apply(fn)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+    ret = super()._apply(fn, recurse)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+    ret = super()._apply(fn, recurse)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+    module._apply(fn)
+    ret = super()._apply(fn, recurse)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/rnn.py", line 223, in _apply
+    ret = super()._apply(fn, recurse)
+    ret = super()._apply(fn, recurse)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+    ret = super()._apply(fn, recurse)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+    ret = super()._apply(fn, recurse)
+    ret = super()._apply(fn, recurse)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+    ret = super()._apply(fn, recurse)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+    param_applied = fn(param)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+    param_applied = fn(param)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+    ret = super()._apply(fn, recurse)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 805, in _apply
+    param_applied = fn(param)
+    param_applied = fn(param)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+    param_applied = fn(param)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+    param_applied = fn(param)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+    param_applied = fn(param)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+    param_applied = fn(param)
+    param_applied = fn(param)
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+    return t.to(
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+    return t.to(
+    param_applied = fn(param)
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+  File "/zhome/d5/3/214816/viswa/my_env/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1160, in convert
+
+    return t.to(
+    return t.to(
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+    return t.to(
+    return t.to(
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+    return t.to(
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+    return t.to(
+
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+    return t.to(
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+    return t.to(
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
