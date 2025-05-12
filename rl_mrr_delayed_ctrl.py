@@ -472,7 +472,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=70, p_max=0.16, p_min=0.12)
+env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12)
 # %%
 desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
@@ -484,7 +484,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed',
+    'run_name': 'mrr_sac_cluster_delayed_v5',
     'batch_size': 128,
     'dist': 'normal',
     'train':False,
@@ -496,7 +496,7 @@ config = {
 from sac import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-                eval_mode=not(torch.cuda.is_available()))
+                eval_mode=not(config['train']))
 print(agent.actor)
 print(agent.critic_1)
 
@@ -529,12 +529,12 @@ while not done:
 # for idx in tqdm(range(env.init_steps_, int(env.max_steps)), ncols=120):
     # perform random actions
     # try:
-        # action = agent.choose_action(obs, True)
+        action = agent.choose_action(obs, True)
         # action = np.random.uniform(-1,1,size=(1,))
-        if achieved==True:
-            action = np.array([0])
-        else:
-            action = np.array([1])#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
+        # if achieved==True:
+        #     action = np.array([0])
+        # else:
+        #     action = np.array([1])#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
 
         next_state, reward, done, achieved, acav_, ecav_ = env.step(state, action[0], desired_spectrum_tensor)
         state = next_state
@@ -576,6 +576,7 @@ import os
 # Create save directory if not exists
 save_dir = os.path.join('./results', agent.run_name)
 os.makedirs(save_dir, exist_ok=True)
+plt.style.use('physrev.mplstyle')
 # %%
 # find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))
@@ -612,8 +613,8 @@ plt.ylabel(r'$t_R (ps)$', fontsize=14)
 plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-# if idx > int(0.5*env.max_steps):
-#     plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_spec_all_ctrl.png'))
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_spec_all_ctrl.png'))
 plt.show()
 
 # %%
@@ -657,9 +658,10 @@ plt.xlabel('Rel. Mode no.', fontsize=14)
 plt.ylabel('Power(dBm)', fontsize=14)
 plt.grid()
 plt.ylim(-90,5)
-plt.xticks(fontsize=14)
-plt.yticks(fontsize=14)
-plt.legend(fontsize=14)
+plt.xlim(-150,150)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
+plt.legend(fontsize=16)
 plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
@@ -674,6 +676,7 @@ plt.xlabel('Iteration', fontsize=14)
 plt.ylabel('Action', fontsize=14)
 plt.legend()
 plt.grid()
+plt.ylim(-1, 1)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 plt.gca().xaxis.set_major_formatter(formatter)
@@ -692,7 +695,7 @@ if idx == env.max_steps-1:
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=50, p_max=0.16, p_min=0.12)
+    env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12)
     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
     from sac import SACAgent
@@ -702,18 +705,19 @@ def run_test_processes(run_id, save_dir):
         'alpha': 3e-4,
         'beta': 3e-4,
         'mem_size': int(1e6),
-        'run_name': 'mrr_sac_cluster',
+        'run_name': 'mrr_sac_cluster_delayed_v4',
         'batch_size': 128,
         'dist': 'normal',
-        'train': False,
+        'train':False,
         'p_max': env.p_max,
         'p_min': env.p_min,
+        'fc_dim': 128
     }
     agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                     mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-                    eval_mode=not(torch.cuda.is_available()))
+                    eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'])
     agent.load_models()
-    state, acav, ecav = env.reset(10000)
+    state, _, ecav = env.reset(10000)
     den = env.p_max - env.p_min
     obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
     print('Chosen power:', env.power)
@@ -742,8 +746,8 @@ def run_test_processes(run_id, save_dir):
             score += reward
 
             r_hist.append(reward)
-            idx += 1
-            pbar.update(1)
+            idx += env.ctrl_freq
+            pbar.update(env.ctrl_freq)
     pbar.close()
 
     print('Test score %.2f' % score)
@@ -795,7 +799,7 @@ def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
             rolling_mean.append(np.nan)
             rolling_std.append(np.nan)
 
-    steps = np.arange(plot_len)
+    steps = np.linspace(0, 100*plot_len, plot_len)
     mu = np.array(rolling_mean)
     sigma = np.array(rolling_std)
 
@@ -815,7 +819,7 @@ def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
     # plt.legend(fontsize=14)
     plt.grid()
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'reward_histories2.png'))
+    plt.savefig(os.path.join(save_dir, 'reward_histories.png'))
     plt.show()
 # %%
 import torch.multiprocessing as mp
@@ -826,6 +830,7 @@ if __name__ == '__main__':
     # Create save directory if not exists
     save_dir = os.path.join('./results', agent.run_name)
     os.makedirs(save_dir, exist_ok=True)
+    print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
     num_runs = 10
     processes = []
@@ -836,15 +841,15 @@ if __name__ == '__main__':
     for p in processes:
         p.join()
     # get the list of all npy files in the directory
-    # npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
+    npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
     # # # Example usage: plot all reward histories with a rolling window of 100
-    # plot_reward_histories(npy_files, N=100, label='Reward', color='C0')
+    plot_reward_histories(npy_files, N=5, label='Reward', color='C0')
 #%% 
-import glob
-save_dir = os.path.join('./results', agent.run_name)
-os.makedirs(save_dir, exist_ok=True)
-npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
-# Example usage: plot all reward histories with a rolling window of 100
-plot_reward_histories(npy_files, N=100, S=7000, label='Reward', color='C0')
+# import glob
+# save_dir = os.path.join('./results', agent.run_name)
+# os.makedirs(save_dir, exist_ok=True)
+# npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
+# # Example usage: plot all reward histories with a rolling window of 100
+# plot_reward_histories(npy_files, N=10, S=0, label='Reward', color='C0')
 # %%
 '''
