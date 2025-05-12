@@ -318,9 +318,10 @@ class RL_MRR_Env():
         print('Reset...')
         return self.state, Acav_np, np.array(self.ecav_state)
     
-    def is_terminal(self, Ecav_dBm, desired_spectrum_dBm):
+    def is_terminal(self, Ecav_dBm, desired_spectrum_dBm, achieved):
         terminal = False
         reward_penalty = 0
+        corr = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item()
         if self.step_cntr<45000 and self.primary_sidebands_flag==False:
             self.primary_sidebands_flag = np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1]<0.5
         
@@ -329,12 +330,16 @@ class RL_MRR_Env():
             reward_penalty = -10
             print('Primary Sidebands not formed')
             print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
-        elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt):
-            if torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() < 0.25:
-                terminal = True
-                reward_penalty = -5
-                # print('Pcav Corr:',corr)
-                print('Spectral Corr:', torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item())
+        elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25 and self.step_cntr-self.init_steps_ <= self.Nt:
+            terminal = True
+            reward_penalty = -5
+            print('Did not form soliton ...')
+            print('Spectral Corr:', corr)
+        elif self.step_cntr > self.Nt and achieved == False:
+            terminal = True
+            reward_penalty = -5
+            print('Did not achieve desired spectrum ...')
+            print('Spectral Corr:', corr)
         return terminal, reward_penalty
     
     def step(self, state, action, desired_spectrum):
@@ -364,6 +369,8 @@ class RL_MRR_Env():
         Acav_np = Acav.numpy()
         curr_pcav = np.sum(np.abs(Acav_np))
         self.pcav_hist.append(curr_pcav)
+        if len(self.pcav_hist) > 10000:
+            self.pcav_hist.pop(0)
 
         Ecav_dBm = 10*torch.log10(torch.abs(Ecav)**2)+30
         Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=10)
@@ -383,35 +390,28 @@ class RL_MRR_Env():
             reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 1
             # reward = np.array(reward).reshape(1,)
         
-        if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50:
+        if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50 or torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() > 0.95:
             achieved = True
             reward += 2
         else:
             achieved = False
 
-        
-        # finf correlation between pcav_hist and recent samples of pcav_ref
-        # if self.step_cntr >= int(0.6*self.max_steps):
-        #     corr = np.corrcoef(self.pcav_hist, self.pcav_ref[self.step_cntr-len(self.pcav_hist):self.step_cntr,0])[0,1]
-        # else:
-        #     corr = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1]
-
-        # pop the first element of the pcav_hist if it exceeds 10001
         done = False
+        terminal, reward_penalty = self.is_terminal(Ecav_dBm, desired_spectrum_dBm, achieved)
+        reward += reward_penalty
+
         if self.step_cntr+1 >= self.max_steps:
-            done = True
-            terminal, reward_penalty = self.is_terminal(Ecav_dBm, desired_spectrum_dBm)
+            done = True            
         else:
-            terminal, reward_penalty = self.is_terminal(Ecav_dBm, desired_spectrum_dBm)
             done = terminal
-            reward += reward_penalty
+            
         
         return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state
 
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=70, p_max=0.16, p_min=0.12)
+env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12)
 # %%
 desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
@@ -423,19 +423,20 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed',
+    'run_name': 'mrr_sac_cluster_delayed_v5',
     'batch_size': 128,
     'dist': 'normal',
     'train':True,
     'p_max': env.p_max,
     'p_min': env.p_min,
+    'fc_dim':128
     }
 # %%
 
 from sac import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-                eval_mode=not(torch.cuda.is_available()))
+                eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'])
 print(agent.actor)
 print(agent.critic_1)
 
@@ -464,6 +465,7 @@ if config['train']:
         state, acav, ecav = env.reset(10000)
         logs['pump power'] = env.power
         obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
+        pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=i, desc='Episode %d' % i)
         while not done:
             action = agent.choose_action(obs)
             
@@ -479,6 +481,7 @@ if config['train']:
             ecav = ecav_
             score += reward
             n_steps += 1
+            pbar.update(env.ctrl_freq)
             
             if agent.memory.mem_cntr > 4*agent.batch_size:
                 cl, al, ent_loss, ent_coeff = agent.learn()
@@ -488,17 +491,18 @@ if config['train']:
                 logs['entropy_coeff'] = ent_coeff
                 # print('Critic loss:', cl, 'Actor loss:', al, 'Entropy loss:', ent_loss, 'Entropy coeff:', ent_coeff)
 
-            if env.step_cntr>=int(0.5*env.Nt) and done==True:
+            if env.step_cntr>=int(0.9*env.Nt) and done==True:
                 
                 fig=plt.figure(figsize=(14,4))
                 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ecav[-1], \
-                        label='Obtained Spectrum')
+                        label='Obtained Spectrum', linewidth=1.5)
                 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
-                            desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5)
+                            desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5,linewidth=1.5)
                 plt.xlabel('Rel. Mode no.', fontsize=14)
                 plt.ylabel('Power(dBm)', fontsize=14)
                 plt.grid()
                 plt.ylim(-90,5)
+                plt.xlim(-150,150)
                 plt.xticks(fontsize=14)
                 plt.yticks(fontsize=14)
                 plt.legend(fontsize=14)
@@ -514,61 +518,63 @@ if config['train']:
             global_n_steps += 1
         scores.append(score)
         avg_score = np.mean(scores[-20:])
+        pbar.close()
         
         if avg_score > best_score:
             best_score = avg_score
+        # if terminal == False:
             agent.save_models()
 
         print('episode: ', i, 'score: %.2f' % score, 'average score: %.2f' % avg_score,'best score: %.2f' % best_score, 'n_steps:', n_steps, 'terminal:', terminal)
 # '''
 # %%
-state, acav, ecav = env.reset(10000)
-den = env.p_max - env.p_min
-obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
-print('Chosen power:', env.power)
-r_hist = []
-action_hist = []
-acav_hist = []
-score = 0
-done = False
-pcav_hist = []
-pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120)
-idx = 0
-done = False
-ecav_hist = []
-achieved = False
-while not done:
-# for idx in tqdm(range(env.init_steps_, int(env.max_steps)), ncols=120):
-    # perform random actions
-    # try:
-        action = agent.choose_action(obs, True)
-        # action = np.random.uniform(-1,1,size=(1,))
-        # action = np.random.normal(0,1,size=(1,))
-        # if achieved==True:
-        #     action = np.array([0])
-        # else:
-        #     action = np.array([1])#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
+# state, acav, ecav = env.reset(10000)
+# den = env.p_max - env.p_min
+# obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
+# print('Chosen power:', env.power)
+# r_hist = []
+# action_hist = []
+# acav_hist = []
+# score = 0
+# done = False
+# pcav_hist = []
+# pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120)
+# idx = 0
+# done = False
+# ecav_hist = []
+# achieved = False
+# while not done:
+# # for idx in tqdm(range(env.init_steps_, int(env.max_steps)), ncols=120):
+#     # perform random actions
+#     # try:
+#         action = agent.choose_action(obs, True)
+#         # action = np.random.uniform(-1,1,size=(1,))
+#         # action = np.random.normal(0,1,size=(1,))
+#         # if achieved==True:
+#         #     action = np.array([0])
+#         # else:
+#         #     action = np.array([1])#np.random.choice([0, 1, 2], p=[1/3, 1/3, 1/3])
 
-        next_state, reward, done, terminal, achieved, acav_, ecav_ = env.step(state, action[0], desired_spectrum_tensor)
-        state = next_state
-        ecav = ecav_
-        obs_ = np.concatenate((ecav_/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
-        obs = obs_
-        score += reward
-        curr_pcav = np.sum(np.abs(acav_))
-        pcav_hist.append(curr_pcav)
-        r_hist.append(reward)
-        action_hist.append(action)
-        # ecav_hist.append(ecav_[-1])
-        # if idx %100 == 0:        
-        acav_hist.append(acav_)
-        idx += env.ctrl_freq
-        pbar.update(env.ctrl_freq)
-    # except KeyboardInterrupt:
-    #     pbar.close()
-    #     break
-    # if keyboard interrupt then close the progress bar
-pbar.close()
+#         next_state, reward, done, terminal, achieved, acav_, ecav_ = env.step(state, action[0], desired_spectrum_tensor)
+#         state = next_state
+#         ecav = ecav_
+#         obs_ = np.concatenate((ecav_/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
+#         obs = obs_
+#         score += reward
+#         curr_pcav = np.sum(np.abs(acav_))
+#         pcav_hist.append(curr_pcav)
+#         r_hist.append(reward)
+#         action_hist.append(action)
+#         # ecav_hist.append(ecav_[-1])
+#         # if idx %100 == 0:        
+#         acav_hist.append(acav_)
+#         idx += env.ctrl_freq
+#         pbar.update(env.ctrl_freq)
+#     # except KeyboardInterrupt:
+#     #     pbar.close()
+#     #     break
+#     # if keyboard interrupt then close the progress bar
+# pbar.close()
 
-print('Test score %.2f' % score)
+# print('Test score %.2f' % score)
 # %%

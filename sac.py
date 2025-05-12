@@ -170,7 +170,7 @@ class CriticNetwork(nn.Module):
 
 class SACAgent:
     def __init__(self, input_dim, n_actions, run_name, alpha=3e-4, beta=3e-4, gamma=0.99, tau=0.005, 
-                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False):
+                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False, fc_dim=128):
         self.input_dim = input_dim
         self.n_actions = n_actions
         self.run_name = run_name
@@ -183,19 +183,19 @@ class SACAgent:
         self.max_action = max_action
         self.dist = dist
 
-        self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, max_action=max_action, dist=dist,name=run_name+'_actor')
-        self.critic_1 = CriticNetwork(input_dim, n_actions=n_actions, lr=beta, name=run_name+'_critic_1')
-        self.critic_2 = CriticNetwork(input_dim, n_actions=n_actions, lr=beta, name=run_name+'_critic_2')
+        self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, fc_dim=fc_dim, max_action=max_action, dist=dist,name=run_name+'_actor')
+        self.critic_1 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_critic_1')
+        self.critic_2 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_critic_2')
         
-        self.target_critic_1 = CriticNetwork(input_dim, n_actions=n_actions, lr=beta, name=run_name+'_target_critic_1')
-        self.target_critic_2 = CriticNetwork(input_dim, n_actions=n_actions, lr=beta, name=run_name+'_target_critic_2')
+        self.target_critic_1 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_target_critic_1')
+        self.target_critic_2 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_target_critic_2')
 
         self.update_network_parameters(tau=1)
         self.target_ent_coef = -np.prod(n_actions)
-        self.log_ent_coef = T.log(T.ones(1,device=self.actor.device)).requires_grad_()
+        self.log_ent_coef = T.log(T.ones(1,device=self.actor.device)).requires_grad_(True)
         self.ent_coef_optimizer = optim.Adam([self.log_ent_coef], lr=alpha)
 
-        self.ent_coef_max, self.ent_coef_min = 1, 1e-4
+        self.ent_coef_max, self.ent_coef_min = 1, 1e-6
 
         if eval_mode == False:
             self.memory = ReplayBuffer(input_dim, n_actions, max_size=mem_size)

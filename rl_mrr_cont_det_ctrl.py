@@ -197,7 +197,7 @@ class RL_MRR_Env():
         t_end  = self.sim_tensor['Tscan']*tR
         t_ramp = t_end
         self.Nt = int(3e5)
-        self.max_steps = int(4e5)
+        self.max_steps = int(3.5e5)
 
         self.del_omega_0 = del_omega_init + (1/self.Nt)*(del_omega_end - del_omega_init)
 
@@ -468,7 +468,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12)
+env = RL_MRR_Env(seq_len=50, p_max=0.16, p_min=0.12)
 # %%
 desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
@@ -492,7 +492,7 @@ config = {
 from sac import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-                eval_mode=not(torch.cuda.is_available()))
+                eval_mode=True)
 print(agent.actor)
 print(agent.critic_1)
 
@@ -598,7 +598,7 @@ agent.load_models()
 # # freeze the actor network
 # for param in agent_frozen.actor.parameters():
 #     param.requires_grad = False
-'''
+# '''
 # %% Testing the agent
 state, acav, ecav = env.reset(10000)
 den = env.p_max - env.p_min
@@ -666,6 +666,7 @@ import os
 # Create save directory if not exists
 save_dir = os.path.join('./results', agent.run_name)
 os.makedirs(save_dir, exist_ok=True)
+# plt.style.use('physrev.mplstyle')
 # %%
 # find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))
@@ -674,8 +675,10 @@ plt.plot(env.pcav_ref[10000:], label='Reference')
 # plt.xlim(25000,50000)
 plt.grid()
 plt.legend()
-plt.xlabel('Iteration')
-plt.ylabel('Pcav')
+plt.xlabel('Iteration', fontsize=14)
+plt.ylabel('Pcav', fontsize=14)
+plt.xticks(fontsize=14)
+plt.yticks(fontsize=14)
 plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
@@ -740,16 +743,17 @@ plt.show()
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
 plt.figure(figsize=(14,4))
 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ecav[-1], \
-           label='Obtained Spectrum')
+           label='Obtained Spectrum',alpha=1.5)
 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
-            desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5)
-plt.xlabel('Rel. Mode no.', fontsize=14)
-plt.ylabel('Power(dBm)', fontsize=14)
+            desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=1)
+plt.xlabel('Rel. Mode no.', fontsize=16)
+plt.ylabel('Power(dBm)', fontsize=16)
 plt.grid()
 plt.ylim(-90,5)
-plt.xticks(fontsize=14)
-plt.yticks(fontsize=14)
-plt.legend(fontsize=14)
+plt.xlim(-150, 150)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
+plt.legend(fontsize=16)
 plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
@@ -937,3 +941,4 @@ npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
 # Example usage: plot all reward histories with a rolling window of 100
 plot_reward_histories(npy_files, N=100, S=7000, label='Reward', color='C0')
 # %%
+'''

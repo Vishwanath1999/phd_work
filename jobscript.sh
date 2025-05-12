@@ -3,7 +3,7 @@
 ### –- specify queue --
 #BSUB -q gpua100
 ### -- set the job Name --
-#BSUB -J rl_mrr_gru_sac
+#BSUB -J rl_mrr_gru_sac_attn
 ### -- ask for number of cores --
 #BSUB -n 4
 
@@ -33,7 +33,7 @@ module load cuda/12.4
 source my_env/bin/activate
 
 # Run your Python script within the virtual environment
-python rl_mrr_cont_det_cntrl_v2.py
+python rl_mrr_cont_det_cntrl_v2_delayed.py
 
 # Deactivate virtual environment after execution (optional)
 deactivate
