@@ -14,7 +14,7 @@ class ReplayBuffer():
         self.input_shape = input_shape
         self.state_memory = np.zeros((self.mem_size,*input_shape),dtype=np.float32)
         self.new_state_memory = np.zeros((self.mem_size,*input_shape),dtype=np.float32)
-        self.action_memory = np.zeros((self.mem_size,n_actions))
+        self.action_memory = np.zeros((self.mem_size,n_actions),dtype=np.float32)
         self.reward_memory = np.zeros((self.mem_size,),dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
 
@@ -40,6 +40,96 @@ class ReplayBuffer():
 
         return states,actions,rewards,states_,dones
 
+class PrioritizedReplayBuffer:
+    def __init__(self, max_size, input_shape, n_actions, alpha=0.6):
+        self.mem_size = max_size
+        self.mem_cntr = 0
+        self.alpha = alpha
+        self.epsilon = 1e-6  # small constant to avoid zero priority
+
+        self.state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
+        self.new_state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
+        self.action_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
+        self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
+        self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
+
+        self.priorities = np.zeros((self.mem_size,), dtype=np.float32)
+
+    def store_transition(self, state, action, reward, state_, done):
+        '''
+        Store a transition in the replay buffer.
+
+        Args:
+            state (np.ndarray): The current state.
+            action (np.ndarray): The action taken.
+            reward (float): The reward received.
+            new_state (np.ndarray): The next state.
+            done (bool): Whether the episode has ended.
+        '''
+        index = self.mem_cntr % self.mem_size
+        self.state_memory[index] = state
+        self.new_state_memory[index] = state_
+        self.reward_memory[index] = reward
+        self.action_memory[index] = action
+        self.terminal_memory[index] = done
+
+        max_prio = self.priorities.max() if self.mem_cntr > 0 else 1.0
+        self.priorities[index] = max_prio  # new sample gets max priority
+
+        self.mem_cntr += 1
+
+    def sample_buffer(self, batch_size, beta=0.4):
+        '''
+        Sample a batch of transitions from the replay buffer.
+
+        Args:
+            batch_size (int): The number of transitions to sample.
+            beta (float): The importance-sampling exponent.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+            - states (np.ndarray): The sampled states.
+            - actions (np.ndarray): The sampled actions.
+            - rewards (np.ndarray): The sampled rewards.
+            - states_ (np.ndarray): The sampled next states.
+            - dones (np.ndarray): The sampled done flags.
+            - indices (np.ndarray): The indices of the sampled transitions.
+            - weights (np.ndarray): The importance-sampling weights.
+        '''
+        max_mem = min(self.mem_cntr, self.mem_size)
+        if max_mem == 0:
+            raise ValueError("Cannot sample from an empty buffer!")
+
+        # Compute probabilities with alpha
+        scaled_priorities = self.priorities[:max_mem] ** self.alpha
+        sample_probs = scaled_priorities / scaled_priorities.sum()
+
+        indices = np.random.choice(max_mem, batch_size, p=sample_probs)
+        
+        # Importance-sampling weights
+        total = max_mem
+        weights = (total * sample_probs[indices]) ** (-beta)
+        weights /= weights.max()  # Normalize
+
+        states = self.state_memory[indices]
+        actions = self.action_memory[indices]
+        rewards = self.reward_memory[indices]
+        states_ = self.new_state_memory[indices]
+        dones = self.terminal_memory[indices]
+
+        return states, actions, rewards, states_, dones, indices, weights
+
+    def update_priorities(self, indices, td_errors):
+        '''
+        Update the priorities of the sampled transitions.
+        Args:
+            indices (np.ndarray): The indices of the transitions to update.
+            td_errors (np.ndarray): The TD errors for the transitions.
+        '''
+        for idx, td_err in zip(indices, td_errors):
+            self.priorities[idx] = abs(td_err) + self.epsilon
+            # Ensure priorities are non-zero and positive
+            self.priorities[idx] = max(self.priorities[idx], self.epsilon)
 
 class Actor(nn.Module):
     def __init__(self, input_dim, lr=3e-4, fc_dim=128, output_dim=1, max_action=1, dist='normal', name='sac',chkpt_dir='./tmp/sac'):
@@ -170,7 +260,7 @@ class CriticNetwork(nn.Module):
 
 class SACAgent:
     def __init__(self, input_dim, n_actions, run_name, alpha=3e-4, beta=3e-4, gamma=0.99, tau=0.005, 
-                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False, fc_dim=128):
+                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False, fc_dim=128, use_per=False):
         self.input_dim = input_dim
         self.n_actions = n_actions
         self.run_name = run_name
@@ -182,6 +272,7 @@ class SACAgent:
         self.batch_size = batch_size
         self.max_action = max_action
         self.dist = dist
+        self.use_per = use_per
 
         self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, fc_dim=fc_dim, max_action=max_action, dist=dist,name=run_name+'_actor')
         self.critic_1 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_critic_1')
@@ -198,7 +289,10 @@ class SACAgent:
         self.ent_coef_max, self.ent_coef_min = 1, 1e-6
 
         if eval_mode == False:
-            self.memory = ReplayBuffer(input_dim, n_actions, max_size=mem_size)
+            if use_per:
+                self.memory = PrioritizedReplayBuffer(mem_size, input_dim, n_actions)
+            else:
+                self.memory = ReplayBuffer(input_dim, n_actions, max_size=mem_size)
     
     def choose_action(self, state, deterministic=False):
         state = T.tensor(np.array([state]), dtype=T.float).to(self.actor.device)
@@ -212,7 +306,13 @@ class SACAgent:
         if self.memory.mem_cntr < self.batch_size:
             return
         
-        state, action, reward, new_state, done = self.memory.sample_buffer(self.batch_size)
+        if self.use_per:
+            state, action, reward, new_state, done, indices, weights = self.memory.sample_buffer(self.batch_size)
+            weights = T.tensor(weights, dtype=T.float).to(self.actor.device)
+        else:
+            state, action, reward, new_state, done = self.memory.sample_buffer(self.batch_size)
+            weights = T.ones(self.batch_size, dtype=T.float).to(self.actor.device)
+
         state = T.tensor(state, dtype=T.float).to(self.actor.device)
         action = T.tensor(action, dtype=T.float).to(self.actor.device)
         reward = T.tensor(reward, dtype=T.float).to(self.actor.device)
@@ -234,7 +334,7 @@ class SACAgent:
         self.critic_2.optimizer.zero_grad()
         q1 = self.critic_1(state, action).view(-1)
         q2 = self.critic_2(state, action).view(-1)
-        critic_loss = 0.5*(F.mse_loss(q1, target_value) + F.mse_loss(q2, target_value))
+        critic_loss = 0.5* (T.mean(weights*(q1 - target_value)**2, dim=0) + T.mean(weights*(q2 - target_value)**2, dim=0))
         critic_loss.backward()
         nn.utils.clip_grad_norm_(self.critic_1.parameters(), 0.5)
         nn.utils.clip_grad_norm_(self.critic_2.parameters(), 0.5)
@@ -260,6 +360,11 @@ class SACAgent:
 
         # Update Target Networks
         self.update_network_parameters()
+
+        # Update priorities in PER
+        if self.use_per:
+            td_errors = T.abs(q1.view(-1) - target_value)
+            self.memory.update_priorities(indices, td_errors.cpu().detach().numpy())
         return critic_loss.item(), actor_loss.item(), ent_coef_loss.item(), ent_coef.item()
 
     def update_network_parameters(self, tau=None):
