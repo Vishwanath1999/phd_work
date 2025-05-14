@@ -77,6 +77,7 @@ class RL_MRR_Env():
 
         D1 = self.disp_tensor['D1']
         FSR = D1/(2*torch.pi)
+        self.FSR = FSR
         omega0 = 2*torch.pi*fpmp
         omega_center = 2*torch.pi*fcenter
 
@@ -330,16 +331,16 @@ class RL_MRR_Env():
             reward_penalty = -10
             print('Primary Sidebands not formed')
             print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
-        elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25 and self.step_cntr-self.init_steps_ <= self.Nt:
+        elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
             terminal = True
             reward_penalty = -5
             print('Did not form soliton ...')
             print('Spectral Corr:', corr)
-        elif self.step_cntr > self.Nt and achieved == False:
-            terminal = True
-            reward_penalty = -5
-            print('Did not achieve desired spectrum ...')
-            print('Spectral Corr:', corr)
+        # elif self.step_cntr > self.Nt and achieved == False:
+        #     terminal = True
+        #     reward_penalty = -5
+        #     print('Did not achieve desired spectrum ...')
+        #     print('Spectral Corr:', corr)
         return terminal, reward_penalty
     
     def step(self, state, action, desired_spectrum):
@@ -390,7 +391,7 @@ class RL_MRR_Env():
             reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 1
             # reward = np.array(reward).reshape(1,)
         
-        if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50 or torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() > 0.95:
+        if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50 or torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() > 0.9:
             achieved = True
             reward += 2
         else:
@@ -412,6 +413,8 @@ class RL_MRR_Env():
 # torch seed
 # torch.manual_seed(0)
 env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12)
+fpmp = env.sim_tensor['f_pmp'].item()
+freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
 desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
@@ -423,9 +426,9 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_v5',
+    'run_name': 'mrr_sac_cluster_delayed_v4',
     'batch_size': 128,
-    'dist': 'normal',
+    'dist': 'beta',
     'train':True,
     'p_max': env.p_max,
     'p_min': env.p_min,
@@ -498,17 +501,37 @@ if config['train']:
                         label='Obtained Spectrum', linewidth=1.5)
                 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
                             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5,linewidth=1.5)
-                plt.xlabel('Rel. Mode no.', fontsize=14)
-                plt.ylabel('Power(dBm)', fontsize=14)
+                
+                plt.xlabel('Rel. Mode no.', fontsize=16)
+                plt.ylabel('Power(dBm)', fontsize=16)
                 plt.grid()
                 plt.ylim(-90,5)
                 plt.xlim(-150,150)
-                plt.xticks(fontsize=14)
-                plt.yticks(fontsize=14)
-                plt.legend(fontsize=14)
+                plt.xticks(fontsize=16)
+                plt.yticks(fontsize=16)
+                plt.legend(fontsize=16)
                 plt.title('Correlation '+str(np.round(np.corrcoef(ecav[-1], np.clip(desired_spectrum_dBm,-60,10))[0,1],2)), fontsize=14)
                 plt.tight_layout()
-                wandb.log({"ecav": wandb.Image(fig)})
+                wandb.log({"ecav_modes": wandb.Image(fig)})
+                plt.close(fig)
+
+                fig=plt.figure(figsize=(14,4))
+                plt.vlines(freq, -60*np.ones(len(ecav[-1])), ecav[-1], \
+                        label='Obtained Spectrum', linewidth=1.5)
+                plt.vlines(freq, -60*np.ones(len(desired_spectrum)),\
+                            desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5,linewidth=1.5)
+                
+                plt.xlabel('Freq (THz).', fontsize=16)
+                plt.ylabel('Power(dBm)', fontsize=16)
+                plt.grid()
+                plt.ylim(-90,5)
+                plt.xlim(freq[220-150],freq[220+150])
+                plt.xticks(fontsize=16)
+                plt.yticks(fontsize=16)
+                plt.legend(fontsize=16)
+                plt.title('Correlation '+str(np.round(np.corrcoef(ecav[-1], np.clip(desired_spectrum_dBm,-60,10))[0,1],2)), fontsize=14)
+                plt.tight_layout()
+                wandb.log({"ecav_freq": wandb.Image(fig)})
                 plt.close(fig)
 
 
