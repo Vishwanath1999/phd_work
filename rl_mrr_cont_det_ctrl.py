@@ -324,8 +324,8 @@ class RL_MRR_Env():
         self.step_cntr = 0
         self.pcav_hist = []
 
-        self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
-        # self.power = np.array([0.1480])
+        # self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
+        self.power = np.array([0.1480])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
         # # fpmp = fpmp[0]
         # Ain = torch.zeros(1, len(self.mu),dtype=torch.complex128, device=DEVICE)
@@ -666,7 +666,7 @@ env.power = np.round(env.power, 4)
 import os
 
 # Create save directory if not exists
-save_dir = os.path.join('./results', agent.run_name)
+save_dir = os.path.join('./results/ipc_results', agent.run_name)
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
 # %%
@@ -743,9 +743,9 @@ if idx > int(0.5*env.max_steps):
 plt.show()
 # %%
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
-plt.figure(figsize=(7,4))
+plt.figure(figsize=(14,4))
 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ecav[-1], \
-           label='Obtained Spectrum',alpha=1, linewidth=1)
+           label='Obtained Spectrum',alpha=1, linewidth=1.5)
 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
 plt.xlabel('Rel. Mode no.', fontsize=16)
@@ -755,7 +755,7 @@ plt.ylim(-90,5)
 plt.xlim(-150, 150)
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
-plt.legend(fontsize=16)
+plt.legend(fontsize=16,loc='lower center')
 # plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
@@ -763,9 +763,9 @@ if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_spec_all_ctrl_modes.png'))
 plt.show()
 
-plt.figure(figsize=(7,4))
+plt.figure(figsize=(14,4))
 plt.vlines(freq, -60*np.ones(len(ecav[-1])), ecav[-1], \
-           label='Obtained Spectrum',alpha=1, linewidth=1)
+           label='Obtained Spectrum',alpha=1, linewidth=1.5)
 plt.vlines(freq, -60*np.ones(len(desired_spectrum)),\
             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
 plt.xlabel('Freq. (THz)', fontsize=16)
@@ -775,7 +775,7 @@ plt.ylim(-90,5)
 plt.xlim(freq[220-150], freq[220+150])
 plt.xticks(fontsize=16, fontweight='bold')
 plt.yticks(fontsize=16, fontweight='bold')
-plt.legend(fontsize=16)
+plt.legend(fontsize=16, loc='lower center')
 # plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
@@ -918,8 +918,8 @@ def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
     sigma = np.array(rolling_std)
 
     plt.figure(figsize=(7, 5))
-    plt.plot(steps, mu, color=color, linewidth=2)
-    plt.fill_between(steps, mu - sigma, mu + sigma, color=color, alpha=0.3)
+    plt.plot(steps, mu, color=color, linewidth=2, label='Avg. Reward')
+    plt.fill_between(steps, mu - sigma, mu + sigma, color=color, alpha=0.3, label='Std. Dev.')
     plt.xlabel(r'Steps $(\times 10^5)$', fontsize=18)
     plt.ylabel('Reward', fontsize=18)
     plt.xticks(fontsize=18)
@@ -930,10 +930,42 @@ def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
     # formatter.set_powerlimits((-1, 1))
     # plt.gca().xaxis.set_major_formatter(formatter)
     # plt.title('Reward Rolling Mean ± Std', fontsize=16, fontweight='bold')
-    # plt.legend(fontsize=14)
+    
+    def get_y(x):
+        idx = np.abs(steps - x).argmin()
+        return mu[idx]
+
+    plt.annotate(
+        'Maximizing \n cavity power',
+        xy=(1.0, get_y(1.0)), xycoords='data',
+        xytext=(1.1, get_y(1.0)+2),
+        textcoords='data',
+        arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=8),
+        fontsize=14, ha='center'
+    )
+
+    plt.annotate(
+        'Maximize \n spectral correlation',
+        xy=(2.25, get_y(2.25)), xycoords='data',
+        xytext=(2.35, get_y(2.25)+2),
+        textcoords='data',
+        arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=8),
+        fontsize=14, ha='center'
+    )
+    # 3.2e5 steps
+    plt.annotate(
+        'Achieved \n desired spectrum',
+        xy=(3.2, get_y(3.2)), xycoords='data',
+        xytext=(3.3, get_y(3.2)+2),
+        textcoords='data',
+        arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=8),
+        fontsize=14, ha='center'
+    )
+
+    plt.legend(fontsize=16)
     plt.grid()
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'reward_histories2.png'))
+    # plt.savefig(os.path.join(save_dir, 'reward_histories2.png'))
     plt.show()
 # %%
 import torch.multiprocessing as mp
@@ -966,3 +998,4 @@ npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
 plot_reward_histories(npy_files, N=100, S=1500, label='Reward', color='C0')
 # %%
 # '''
+plot_reward_histories(npy_files, N=100, S=1500, label='Reward', color='C0')

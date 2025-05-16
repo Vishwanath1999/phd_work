@@ -426,20 +426,21 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_v4',
+    'run_name': 'mrr_sac_cluster_delayed_v6',
     'batch_size': 128,
     'dist': 'beta',
     'train':True,
     'p_max': env.p_max,
     'p_min': env.p_min,
-    'fc_dim':128
+    'fc_dim':128,
+    'use_per':True
     }
 # %%
 
 from sac import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-                eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'])
+                eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'])
 print(agent.actor)
 print(agent.critic_1)
 
@@ -487,7 +488,7 @@ if config['train']:
             pbar.update(env.ctrl_freq)
             
             if agent.memory.mem_cntr > 4*agent.batch_size:
-                cl, al, ent_loss, ent_coeff = agent.learn()
+                cl, al, ent_loss, ent_coeff = agent.learn(global_n_steps)
                 logs['critic_loss'] = cl
                 logs['actor_loss'] = al
                 logs['entropy_loss'] = ent_loss
@@ -509,7 +510,7 @@ if config['train']:
                 plt.xlim(-150,150)
                 plt.xticks(fontsize=16)
                 plt.yticks(fontsize=16)
-                plt.legend(fontsize=16)
+                plt.legend(fontsize=16, loc='lower center')
                 plt.title('Correlation '+str(np.round(np.corrcoef(ecav[-1], np.clip(desired_spectrum_dBm,-60,10))[0,1],2)), fontsize=14)
                 plt.tight_layout()
                 wandb.log({"ecav_modes": wandb.Image(fig)})
@@ -528,13 +529,14 @@ if config['train']:
                 plt.xlim(freq[220-150],freq[220+150])
                 plt.xticks(fontsize=16)
                 plt.yticks(fontsize=16)
-                plt.legend(fontsize=16)
+                plt.legend(fontsize=16, loc='lower center')
                 plt.title('Correlation '+str(np.round(np.corrcoef(ecav[-1], np.clip(desired_spectrum_dBm,-60,10))[0,1],2)), fontsize=14)
                 plt.tight_layout()
                 wandb.log({"ecav_freq": wandb.Image(fig)})
                 plt.close(fig)
 
-
+            if config['use_per']:
+                logs['beta_per'] = agent.beta
             # if global_n_steps%100 == 0:
             wandb.log(logs)
 
