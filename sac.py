@@ -127,7 +127,7 @@ class PrioritizedReplayBuffer:
             td_errors (np.ndarray): The TD errors for the transitions.
         '''
         for idx, td_err in zip(indices, td_errors):
-            self.priorities[idx] = abs(td_err) + self.epsilon
+            self.priorities[idx] = td_err + self.epsilon
             # Ensure priorities are non-zero and positive
             self.priorities[idx] = max(self.priorities[idx], self.epsilon)
 
@@ -274,6 +274,13 @@ class SACAgent:
         self.dist = dist
         self.use_per = use_per
 
+        if self.use_per:
+            self.beta_start = 0.4
+            self.beta = self.beta_start
+            self.beta_end = 1.0
+            self.beta_steps = int(1e5)
+            self.beta_inc = (self.beta_end - self.beta_start) / self.beta_steps
+
         self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, fc_dim=fc_dim, max_action=max_action, dist=dist,name=run_name+'_actor')
         self.critic_1 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_critic_1')
         self.critic_2 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_critic_2')
@@ -302,12 +309,12 @@ class SACAgent:
     def remember(self, state, action, reward, new_state, done):
         self.memory.store_transition(state, action, reward, new_state, done)
     
-    def learn(self):
+    def learn(self, step):
         if self.memory.mem_cntr < self.batch_size:
             return
         
         if self.use_per:
-            state, action, reward, new_state, done, indices, weights = self.memory.sample_buffer(self.batch_size)
+            state, action, reward, new_state, done, indices, weights = self.memory.sample_buffer(self.batch_size, self.beta)
             weights = T.tensor(weights, dtype=T.float).to(self.actor.device)
         else:
             state, action, reward, new_state, done = self.memory.sample_buffer(self.batch_size)
@@ -363,8 +370,12 @@ class SACAgent:
 
         # Update priorities in PER
         if self.use_per:
-            td_errors = T.abs(q1.view(-1) - target_value)
+            td_errors = T.abs(q1.view(-1) - target_value).clamp(-1,1)
             self.memory.update_priorities(indices, td_errors.cpu().detach().numpy())
+            
+            # Update beta for PER
+            self.beta = min(self.beta_end, self.beta + self.beta_inc)
+
         return critic_loss.item(), actor_loss.item(), ent_coef_loss.item(), ent_coef.item()
 
     def update_network_parameters(self, tau=None):

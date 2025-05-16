@@ -129,6 +129,7 @@ class RL_MRR_Env():
 
         D1 = self.disp_tensor['D1']
         FSR = D1/(2*torch.pi)
+        self.FSR = FSR
         omega0 = 2*torch.pi*fpmp
         omega_center = 2*torch.pi*fcenter
 
@@ -473,6 +474,8 @@ class RL_MRR_Env():
 # torch seed
 # torch.manual_seed(0)
 env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12)
+fpmp = env.sim_tensor['f_pmp'].item()
+freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
 desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
@@ -484,7 +487,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_v4',
+    'run_name': 'mrr_sac_cluster_delayed_v6',
     'batch_size': 128,
     'dist': 'beta',
     'train':False,
@@ -610,7 +613,7 @@ formatter.set_powerlimits((-1, 1))
 plt.gca().xaxis.set_major_formatter(formatter)
 plt.xlabel('Tuning Steps', fontsize=14)
 plt.ylabel(r'$t_R (ps)$', fontsize=14)
-plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
+plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
@@ -629,7 +632,7 @@ plt.ylabel(r'$\mu$' +'(rel)', fontsize=14)
 plt.colorbar(label='Power(dBm)')
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
-plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
+plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
@@ -641,32 +644,56 @@ plt.plot(r_hist)
 plt.xlabel('Iteration', fontsize=14)
 plt.ylabel('Reward ', fontsize=14)
 plt.grid()
-plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
+plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
 plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_rewards_spec_all_ctrl.png'))
 plt.show()
 # %%
+desired_spectrum_dBm_ = np.clip(desired_spectrum_dBm, -60, 10)
+mse = np.linalg.norm(desired_spectrum_dBm_-ecav[-1], ord=2)
+print('MSE:', mse)
+# %%
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
 plt.figure(figsize=(14,4))
 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ecav[-1], \
-           label='Obtained Spectrum')
+           label='Obtained Spectrum',alpha=1, linewidth=1.5)
 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
-            desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5)
-plt.xlabel('Rel. Mode no.', fontsize=14)
-plt.ylabel('Power(dBm)', fontsize=14)
+            desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
+plt.xlabel('Rel. Mode no.', fontsize=16)
+plt.ylabel('Power(dBm)', fontsize=16)
 plt.grid()
 plt.ylim(-90,5)
-plt.xlim(-150,150)
-plt.xticks(fontsize=16)
-plt.yticks(fontsize=16)
-plt.legend(fontsize=16)
-plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
+plt.xlim(-150, 150)
+plt.xticks(fontsize=18)
+plt.yticks(fontsize=18)
+plt.legend(fontsize=18,loc='lower center')
+plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_spec_all_ctrl_modes.png'))
+plt.show()
+
+plt.figure(figsize=(14,4))
+plt.vlines(freq, -60*np.ones(len(ecav[-1])), ecav[-1], \
+           label='Obtained Spectrum',alpha=1, linewidth=1.5)
+plt.vlines(freq, -60*np.ones(len(desired_spectrum)),\
+            desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
+plt.xlabel('Freq. (THz)', fontsize=16)
+plt.ylabel('Power(dBm)', fontsize=16)
+plt.grid()
+plt.ylim(-90,5)
+plt.xlim(freq[220-150], freq[220+150])
+plt.xticks(fontsize=18, fontweight='bold')
+plt.yticks(fontsize=18, fontweight='bold')
+plt.legend(fontsize=18, loc='lower center')
+plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.tight_layout()
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_spec_all_ctrl_freq.png'))
 plt.show()
 # %%
 action_hist = np.array(action_hist)
@@ -688,9 +715,9 @@ if idx > int(0.5*env.max_steps):
 plt.show()
 
 # %%
-if idx == env.max_steps-1:
-    # save the reward history
-    np.save(os.path.join(save_dir, mod_pow + '_reward_hist_spec_all_ctrl.npy'), r_hist)
+# if idx == env.max_steps-1:
+#     # save the reward history
+#     np.save(os.path.join(save_dir, mod_pow + '_reward_hist_spec_all_ctrl.npy'), r_hist)
 '''
 # %%
 def run_test_processes(run_id, save_dir):
@@ -705,9 +732,9 @@ def run_test_processes(run_id, save_dir):
         'alpha': 3e-4,
         'beta': 3e-4,
         'mem_size': int(1e6),
-        'run_name': 'mrr_sac_cluster_delayed_v4',
+        'run_name': 'mrr_sac_cluster_delayed_v6',
         'batch_size': 128,
-        'dist': 'normal',
+        'dist': 'beta',
         'train':False,
         'p_max': env.p_max,
         'p_min': env.p_min,
@@ -720,7 +747,7 @@ def run_test_processes(run_id, save_dir):
     state, _, ecav = env.reset(10000)
     den = env.p_max - env.p_min
     obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den),axis=1)
-    print('Chosen power:', env.power)
+    print('Chosen power:', env.power,'\n')
     r_hist = []
     score = 0
     done = False
@@ -753,7 +780,7 @@ def run_test_processes(run_id, save_dir):
     print('Test score %.2f' % score)
     mod_pow = str(np.round(env.power[0],4)).replace('.','_')
     
-    if idx > int(0.9*env.max_steps):
+    if env.step_cntr >= env.max_steps-env.init_steps_-2:
         print('Idx:', idx)
         # save the reward history
         np.save(os.path.join(save_dir, mod_pow + '_reward_hist_spec_all_ctrl_v2.npy'), r_hist)
@@ -774,6 +801,8 @@ def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
     import numpy as np
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
+
+    plt.style.use('physrev.mplstyle')
 
     # Load all reward histories
     rewards = [np.load(f) for f in files]
@@ -799,27 +828,89 @@ def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
             rolling_mean.append(np.nan)
             rolling_std.append(np.nan)
 
-    steps = np.linspace(0, 100*plot_len, plot_len)
+    steps = np.linspace(0, 100*plot_len, plot_len)*1e-5
     mu = np.array(rolling_mean)
     sigma = np.array(rolling_std)
 
     plt.figure(figsize=(7, 5))
-    plt.plot(steps, mu, color=color)
+    plt.plot(steps, mu, color=color, linewidth=1.5)
     plt.fill_between(steps, mu - sigma, mu + sigma, color=color, alpha=0.3)
-    plt.xlabel('Iteration', fontsize=14)
-    plt.ylabel('Reward', fontsize=14)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
+    plt.xlabel(r'Steps $(\times 10^5)$', fontsize=14)
+    plt.ylabel('Reward', fontsize=16)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
     # set x-ticks to exponent format
-    formatter = ticker.ScalarFormatter(useMathText=True)
-    formatter.set_scientific(True)
-    formatter.set_powerlimits((-1, 1))
-    plt.gca().xaxis.set_major_formatter(formatter)
+    # formatter = ticker.ScalarFormatter(useMathText=True)
+    # formatter.set_scientific(True)
+    # formatter.set_powerlimits((-1, 1))
+    # plt.gca().xaxis.set_major_formatter(formatter)
     # plt.title('Reward Rolling Mean ± Std', fontsize=16, fontweight='bold')
     # plt.legend(fontsize=14)
     plt.grid()
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'reward_histories.png'))
+    plt.show()
+# %%
+def plot_reward_histories(files, N=100, S=0, label='Reward', color='C0'):
+    """
+    Plot rolling mean and min/max of rewards from multiple runs, handling different lengths.
+    Optionally leave the last S samples from max_len and then plot.
+
+    Args:
+        files (list): List of file paths to .npy reward histories.
+        N (int): Window size for rolling stats.
+        S (int): Number of samples to leave from the end.
+        label (str): Label for the mean line.
+        color (str): Color for the plot.
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    plt.style.use('physrev.mplstyle')
+
+    # Load all reward histories
+    rewards = [np.load(f) for f in files]
+    max_len = max(len(r) for r in rewards)
+    # Pad with np.nan to align lengths
+    rewards_padded = np.full((len(rewards), max_len), np.nan)
+    for i, r in enumerate(rewards):
+        rewards_padded[i, :len(r)] = r
+
+    # Optionally leave the last S samples
+    plot_len = max_len - S if S > 0 else max_len
+
+    # Compute rolling mean, min, and max, ignoring nan
+    rolling_mean = []
+    rolling_min = []
+    rolling_max = []
+    for t in range(plot_len):
+        window = rewards_padded[:, max(0, t-N+1):t+1]
+        vals = window[~np.isnan(window)]
+        if len(vals) > 0:
+            rolling_mean.append(np.mean(vals))
+            rolling_min.append(np.min(vals))
+            rolling_max.append(np.max(vals))
+        else:
+            rolling_mean.append(np.nan)
+            rolling_min.append(np.nan)
+            rolling_max.append(np.nan)
+
+    steps = np.linspace(0, 100*plot_len, plot_len)*1e-5
+    mu = np.array(rolling_mean)
+    minv = np.array(rolling_min)
+    maxv = np.array(rolling_max)
+
+    plt.figure(figsize=(7, 5))
+    plt.plot(steps, mu, color=color, linewidth=1.5)
+    plt.fill_between(steps, minv, maxv, color=color, alpha=0.3)
+    plt.xlabel(r'Steps $(\times 10^5)$', fontsize=14)
+    plt.ylabel('Reward', fontsize=16)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.grid()
+    plt.tight_layout()
+    # plt.legend(fontsize=14)
+    plt.savefig(os.path.join(save_dir, 'reward_histories_v2.png'))
     plt.show()
 # %%
 import torch.multiprocessing as mp
@@ -828,7 +919,7 @@ import glob
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name)
+    save_dir = os.path.join('./results', agent.run_name,'ipc_results')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
@@ -841,15 +932,15 @@ if __name__ == '__main__':
     for p in processes:
         p.join()
     # get the list of all npy files in the directory
-    npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
+    # npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
     # # # Example usage: plot all reward histories with a rolling window of 100
-    plot_reward_histories(npy_files, N=5, label='Reward', color='C0')
+    # plot_reward_histories(npy_files, N=5, label='Reward', color='C0')
 #%% 
-# import glob
-# save_dir = os.path.join('./results', agent.run_name)
-# os.makedirs(save_dir, exist_ok=True)
-# npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
-# # Example usage: plot all reward histories with a rolling window of 100
-# plot_reward_histories(npy_files, N=10, S=0, label='Reward', color='C0')
+import glob
+save_dir = os.path.join('./results', agent.run_name,'ipc_results')
+os.makedirs(save_dir, exist_ok=True)
+npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
+# Example usage: plot all reward histories with a rolling window of 100
+plot_reward_histories(npy_files, N=5, S=0, label='Reward', color='C0')
 # %%
 '''
