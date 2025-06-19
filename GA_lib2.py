@@ -36,6 +36,12 @@ class geneticalgorithm:
         self.n_processes = n_processes or mp.cpu_count()
         self.fitness_threshold = fitness_threshold
 
+        # Show max and used processes
+        max_procs = os.cpu_count()
+        if self.parallel:
+            print(f"[GA] Max available processes: {max_procs}")
+            print(f"[GA] Processes used for parallel evaluation: {self.n_processes}")
+
         if random_seed is not None:
             np.random.seed(random_seed)
 
