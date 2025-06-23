@@ -553,13 +553,14 @@ plt.style.use('physrev.mplstyle')
 # %%
 # find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))
-plt.plot(pcav_hist, label='Obtained')
+plt.plot(pcav_hist, linewidth=1.5)
 plt.grid()
-plt.legend()
-plt.xlabel('Iteration', fontsize=16)
+plt.xlabel('Steps', fontsize=16)
 plt.ylabel('Pcav', fontsize=16)
 plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 plt.tight_layout()
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
 mod_pow = str(env.power[0]).replace('.','_')
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_pcav_spec_all_ctrl.png'))
@@ -606,8 +607,8 @@ plt.yticks(fontsize=14)
 plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-# if idx > int(0.5*env.max_steps):
-plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_ifft_spec_all_ctrl.png'))
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_ifft_spec_all_ctrl.png'))
 plt.show()
 # %% Reward Plot
 plt.figure(figsize=(10, 6))
@@ -686,8 +687,8 @@ plt.gca().xaxis.set_major_formatter(formatter)
 plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-# if idx > int(0.5*env.max_steps):
-plt.savefig(os.path.join(save_dir, mod_pow + '_actions_spec_all_ctrl.png'))
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_actions_spec_all_ctrl.png'))
 plt.show()
 
 # %%
@@ -701,8 +702,8 @@ plt.yticks(fontsize=18)
 plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-# if idx > int(0.5*env.max_steps):
-plt.savefig(os.path.join(save_dir, mod_pow + '_actions_power_spec_all_ctrl.png'))
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_actions_power_spec_all_ctrl.png'))
 plt.show()
 '''
 # %%
@@ -916,6 +917,6 @@ if __name__ == '__main__':
     # get the list of all npy files in the directory
     npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
     # # # Example usage: plot all reward histories with a rolling window of 100
-    plot_reward_histories_sigma(npy_files, N=5, S=5, label='Reward', color='C0')
-    plot_reward_histories_min_max(npy_files, N=5, S=5, label='Reward', color='C0')
+    plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
+    plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
 '''

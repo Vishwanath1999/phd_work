@@ -554,7 +554,7 @@ if __name__ == "__main__":
         n_processes=15,
         progress_bar=True,
         algorithm_parameters=algorithm_param,
-        seed=seed,
+        random_seed=seed,
         fitness_threshold=1e-5,
     )
     save_dir = os.path.join(os.getcwd(), 'GA_results')
@@ -572,7 +572,19 @@ if __name__ == "__main__":
     # run the simulation with best params
     fine = best_var[0]
     dwell_steps = int(best_var[1])  # Convert to integer for dwell steps
-    domgea = initialize_del_omega_all(fine, dwell_steps, Nt.item(), del_omega_init, del_omega_end, rescale_and_quantize, device).cpu().numpy()
+    domega = initialize_del_omega_all(fine, dwell_steps, Nt.item(), del_omega_init, del_omega_end, rescale_and_quantize, device).cpu().numpy()
+    domega = np.cumsum(domega)*1e-9/(2*np.pi)
+    plt.figure(figsize=(10,6))
+    plt.plot(domega, linewidth=1.5)
+    plt.xlabel('Tuning Steps', fontsize=16)
+    plt.ylabel('Detuning (GHz)', fontsize=16)
+    plt.title('Detuning vs Tuning Steps', fontsize=18, fontweight='bold')
+    plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'detuning_vs_tuning_steps.png'), dpi=300)
+    plt.show()
     pump_power = best_var[2]  # Assuming the third parameter is the pump power
     print(f"Running simulation with fine={rescale_and_quantize(best_var[0])}, dwell_steps={dwell_steps}, pump_power={rescale_power(best_var[2])}")
     spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
@@ -629,67 +641,67 @@ if __name__ == "__main__":
 # plt.show()
 # %%
 # import the population fitness mat file
-population_fitness = loadmat('./GA_results/population_fitness.mat')['fitness']
-def plot_population_fitness_from_mat(population_fitness, save_path=None):
-    """
-    Plot the fitness of the entire population per generation from a loaded .mat file,
-    highlighting the best solution in each generation.
-    """
-    fitness_matrix = np.array(population_fitness)  # shape: (generations, population_size)
-    generations = np.arange(fitness_matrix.shape[0])
-    plt.figure(figsize=(8, 5))
-    # Plot all individuals
-    plt.plot(generations[:, None], fitness_matrix, '*', color='black', markersize=3, alpha=0.7)
-    # Highlight best
-    best_fitness = np.min(fitness_matrix, axis=1)
-    plt.plot(generations, best_fitness, 'ro-', linewidth=2, label='Best Fitness', markersize=3)
-    plt.xlabel('Generation', fontsize=20)
-    plt.ylabel('Fitness '+ r'$mse$', fontsize=20)
-    plt.xticks(fontsize=16)
-    plt.yticks(fontsize=16)
-    plt.yscale('log')
-    plt.title('Population Fitness per Generation', fontsize=18, fontweight='bold')
-    plt.legend()
-    plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
-    plt.tight_layout()
-    fig_name = 'population_fitness_curve.png'
-    if save_path is not None:
-        save_path = save_path if save_path.endswith('.png') else f"{save_path}/{fig_name}"
-    else:
-        save_path = fig_name
-    print(f"Saving population fitness plot to {save_path}")
-    plt.savefig(save_path, dpi=300)
-    plt.show()
+# population_fitness = loadmat('./GA_results/population_fitness.mat')['fitness']
+# def plot_population_fitness_from_mat(population_fitness, save_path=None):
+#     """
+#     Plot the fitness of the entire population per generation from a loaded .mat file,
+#     highlighting the best solution in each generation.
+#     """
+#     fitness_matrix = np.array(population_fitness)  # shape: (generations, population_size)
+#     generations = np.arange(fitness_matrix.shape[0])
+#     plt.figure(figsize=(8, 5))
+#     # Plot all individuals
+#     plt.plot(generations[:, None], fitness_matrix, '*', color='black', markersize=3, alpha=0.7)
+#     # Highlight best
+#     best_fitness = np.min(fitness_matrix, axis=1)
+#     plt.plot(generations, best_fitness, 'ro-', linewidth=2, label='Best Fitness', markersize=3)
+#     plt.xlabel('Generation', fontsize=20)
+#     plt.ylabel('Fitness '+ r'$mse$', fontsize=20)
+#     plt.xticks(fontsize=16)
+#     plt.yticks(fontsize=16)
+#     plt.yscale('log')
+#     plt.title('Population Fitness per Generation', fontsize=18, fontweight='bold')
+#     plt.legend()
+#     plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
+#     plt.tight_layout()
+#     fig_name = 'population_fitness_curve.png'
+#     if save_path is not None:
+#         save_path = save_path if save_path.endswith('.png') else f"{save_path}/{fig_name}"
+#     else:
+#         save_path = fig_name
+#     print(f"Saving population fitness plot to {save_path}")
+#     plt.savefig(save_path, dpi=300)
+#     plt.show()
 
-def plot_fitness_curve_from_mat(population_fitness, save_path=None):
-    """
-    Plot and optionally save the best fitness (minimum per generation) vs generations from a loaded .mat file.
-    """
-    fitness_matrix = np.array(population_fitness)
-    best_fitness = np.min(fitness_matrix, axis=1)
-    plt.figure(figsize=(8, 5))
-    plt.plot(best_fitness, label='Best Fitness', linewidth=2)
-    plt.xlabel('Generation', fontsize=20)
-    plt.ylabel('Best Fitness '+r'$mse$', fontsize=20)
-    plt.title('Fitness Curve', fontsize=18, fontweight='bold')
-    plt.xticks(fontsize=16)
-    plt.yticks(fontsize=16)
-    plt.yscale('log')
-    plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
-    plt.legend()
-    plt.tight_layout()
-    fig_name = 'fitness_curve.png'
-    if save_path is not None:
-        save_path = save_path if save_path.endswith('.png') else f"{save_path}/{fig_name}"
-    else:
-        save_path = fig_name
-    print(f"Saving fitness curve plot to {save_path}")
-    plt.savefig(save_path, dpi=300)
-    plt.show()
-# %%
-# Example usage:
-save_path = os.path.join(os.getcwd(), 'GA_results')
-plot_population_fitness_from_mat(population_fitness, save_path=save_path)
-plot_fitness_curve_from_mat(population_fitness, save_path=save_path)
+# def plot_fitness_curve_from_mat(population_fitness, save_path=None):
+#     """
+#     Plot and optionally save the best fitness (minimum per generation) vs generations from a loaded .mat file.
+#     """
+#     fitness_matrix = np.array(population_fitness)
+#     best_fitness = np.min(fitness_matrix, axis=1)
+#     plt.figure(figsize=(8, 5))
+#     plt.plot(best_fitness, label='Best Fitness', linewidth=2)
+#     plt.xlabel('Generation', fontsize=20)
+#     plt.ylabel('Best Fitness '+r'$mse$', fontsize=20)
+#     plt.title('Fitness Curve', fontsize=18, fontweight='bold')
+#     plt.xticks(fontsize=16)
+#     plt.yticks(fontsize=16)
+#     plt.yscale('log')
+#     plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
+#     plt.legend()
+#     plt.tight_layout()
+#     fig_name = 'fitness_curve.png'
+#     if save_path is not None:
+#         save_path = save_path if save_path.endswith('.png') else f"{save_path}/{fig_name}"
+#     else:
+#         save_path = fig_name
+#     print(f"Saving fitness curve plot to {save_path}")
+#     plt.savefig(save_path, dpi=300)
+#     plt.show()
+# # %%
+# # Example usage:
+# save_path = os.path.join(os.getcwd(), 'GA_results')
+# plot_population_fitness_from_mat(population_fitness, save_path=save_path)
+# plot_fitness_curve_from_mat(population_fitness, save_path=save_path)
 # '''
 # %%

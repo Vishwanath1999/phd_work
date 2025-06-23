@@ -37,7 +37,7 @@ class geneticalgorithm:
         self.fitness_threshold = fitness_threshold
 
         # Show max and used processes
-        max_procs = os.cpu_count()
+        max_procs = mp.cpu_count()
         if self.parallel:
             print(f"[GA] Max available processes: {max_procs}")
             print(f"[GA] Processes used for parallel evaluation: {self.n_processes}")
@@ -127,6 +127,10 @@ class geneticalgorithm:
                     if self.progress_bar:
                         print("Stopping: no improvement for max_iteration_without_improv generations.")
                     break
+            
+            # Update progress bar with best fitness
+            if self.progress_bar:
+                gen_iter.set_postfix({'Best Fitness': best_function, 'Generation': iteration + 1, 'Variable': best_variable})
 
         if self.progress_bar:
             print()
