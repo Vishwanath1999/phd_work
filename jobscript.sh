@@ -33,7 +33,7 @@ module load cuda/12.4
 source my_env/bin/activate
 
 # Run your Python script within the virtual environment
-python rl_mrr_cont_det_cntrl_v2_delayed.py
+python rl_mrr_toptica_mimic_copy_to_noise.py
 
 # Deactivate virtual environment after execution (optional)
 deactivate

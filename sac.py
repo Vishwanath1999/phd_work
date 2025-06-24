@@ -278,7 +278,7 @@ class SACAgent:
             self.beta_start = 0.4
             self.beta = self.beta_start
             self.beta_end = 1.0
-            self.beta_steps = int(1e5)
+            self.beta_steps = int(2e5)
             self.beta_inc = (self.beta_end - self.beta_start) / self.beta_steps
 
         self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, fc_dim=fc_dim, max_action=max_action, dist=dist,name=run_name+'_actor')
