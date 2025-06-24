@@ -76,7 +76,7 @@ class geneticalgorithm:
 
         gen_iter = range(self.param['max_num_iteration'])
         if self.progress_bar:
-            gen_iter = tqdm(gen_iter, desc='Generations', ncols=60)
+            gen_iter = tqdm(gen_iter, desc='Generations', ncols=150)
 
         for iteration in gen_iter:
             # Sort by fitness (lower is better)
@@ -159,7 +159,7 @@ class geneticalgorithm:
         fitness_matrix = np.array(self.all_fitness_per_gen)
         generations = np.arange(fitness_matrix.shape[0])
         plt.figure(figsize=(10, 6))
-        plt.plot(generations, fitness_matrix, '*', color='black', markersize=3, alpha=0.7, label='Population')
+        plt.plot(generations, fitness_matrix, '*', color='black', markersize=3, alpha=0.7)
         best_fitness = np.min(fitness_matrix, axis=1)
         plt.plot(generations, best_fitness, 'ro-', linewidth=2, label='Best Fitness', markersize=3)
         plt.xlabel('Generation', fontsize=16)
@@ -226,13 +226,13 @@ class geneticalgorithm:
                                 total=len(population),
                                 desc="Fitness (parallel)",
                                 disable=not self.progress_bar,
-                                leave=False, ncols=100):
+                                leave=False, ncols=150):
                     results.append(res)
                 for i in range(len(population)):
                     population[i, -1] = results[i]
         else:
             for i, ind in enumerate(tqdm(population, desc="Fitness (serial)",
-                                         disable=not self.progress_bar, leave=False, ncols=100)):
+                                         disable=not self.progress_bar, leave=False, ncols=150)):
                 population[i, -1] = self.funct(ind[:-1])
 
     def __crossover(self, parent1, parent2):
