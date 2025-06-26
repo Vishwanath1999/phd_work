@@ -507,7 +507,7 @@ config = {
     'mem_size': int(1e6),
     'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton',
     'batch_size': 128,
-    'dist': 'beta',
+    'dist': 'beta', # 'beta' or 'normal'
     'train':True,
     'p_max': env.p_max,
     'p_min': env.p_min,

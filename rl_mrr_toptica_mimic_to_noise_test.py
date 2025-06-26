@@ -524,7 +524,7 @@ print(agent.actor)
 print(agent.critic_1)
 agent.load_models()
 # %%
-# '''
+'''
 state, acav, ecav = env.reset(10000)
 den = env.p_max - env.p_min
 obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
@@ -580,9 +580,9 @@ plt.grid()
 plt.xlabel('Steps', fontsize=16)
 plt.ylabel('Pcav', fontsize=16)
 plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
-plt.tight_layout()
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
+plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_pcav_spec_all_ctrl.png'))
@@ -594,7 +594,9 @@ import matplotlib.ticker as ticker
 plt.figure(figsize=(14,4))
 plt.imshow(np.abs(1e3*np.array(acav_hist).T), aspect='auto', cmap='jet',\
             extent=[0, len(acav_hist), -1e12*env.tR.item()/2, 1e12*env.tR.item()/2])
-plt.colorbar(label='Power(dBm)')
+cbar = plt.colorbar()
+cbar.ax.tick_params(labelsize=16)
+cbar.set_label(r'Power $(dBm)$', fontsize=16)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 # Set x-ticks to exponent format
@@ -731,7 +733,7 @@ plt.show()
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=50, p_max=0.16, p_min=0.12)
+    env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12)
     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
     from sac import SACAgent
@@ -941,4 +943,4 @@ if __name__ == '__main__':
     # # # Example usage: plot all reward histories with a rolling window of 100
     plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
     plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-'''
+# '''
