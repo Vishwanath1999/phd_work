@@ -524,7 +524,7 @@ print(agent.actor)
 print(agent.critic_1)
 agent.load_models()
 # %%
-'''
+# '''
 state, acav, ecav = env.reset(10000)
 den = env.p_max - env.p_min
 obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
@@ -943,4 +943,4 @@ if __name__ == '__main__':
     # # # Example usage: plot all reward histories with a rolling window of 100
     plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
     plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-# '''
+'''
