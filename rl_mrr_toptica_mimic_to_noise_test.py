@@ -20,7 +20,7 @@ H_BAR = cts.hbar
 # %%
 class RL_MRR_Env():
 
-    def __init__(self, seq_len=50, p_max=0.3, p_min=0.1, ctrl_freq=100):
+    def __init__(self, seq_len=50, p_max=0.3, p_min=0.1, ctrl_freq=100, thermal_effect='moderate'):
         super(RL_MRR_Env, self).__init__()
 
         self.step_cntr = 0
@@ -90,8 +90,16 @@ class RL_MRR_Env():
         alpha = k0+kext
         self.alpha = alpha
 
+        if thermal_effect == 'low':
+            self.xi = -1.2e4
+        elif thermal_effect == 'moderate':
+            self.xi = -4.5e4
+        elif thermal_effect == 'high':
+            self.xi = -1.2e5
+        else:
+            raise ValueError("Invalid thermal effect. Choose from 'low', 'moderate', or 'high'.")
+
         self.tau0 = 100e-9
-        self.xi = -4.5e4
         self.delta_theta = torch.tensor(0.0, device=DEVICE, dtype=torch.float64)
 
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
@@ -491,7 +499,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100)
+env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='low')
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -596,7 +604,7 @@ plt.imshow(np.abs(1e3*np.array(acav_hist).T), aspect='auto', cmap='jet',\
             extent=[0, len(acav_hist), -1e12*env.tR.item()/2, 1e12*env.tR.item()/2])
 cbar = plt.colorbar()
 cbar.ax.tick_params(labelsize=16)
-cbar.set_label(r'Power $(dBm)$', fontsize=16)
+cbar.set_label(r'Power $(mW)$', fontsize=16)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 # Set x-ticks to exponent format
@@ -733,7 +741,7 @@ plt.show()
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12)
+    env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='high')
     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
     from sac import SACAgent

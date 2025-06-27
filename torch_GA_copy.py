@@ -506,7 +506,7 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False):
     spec_dBm = np.clip(spec_dBm, -60, 10)  # Clip to avoid extreme values
     if progress_bar:
         plt.figure(figsize=(14, 4))
-        plt.imshow(np.abs(saved_data['u_probe'].cpu().numpy()).T, aspect='auto', cmap='jet')
+        plt.imshow(np.abs(Acav.T), aspect='auto', cmap='jet')
         plt.colorbar(label='Field Amplitude')
         plt.title('Field Amplitude Over Time')
         plt.xlabel('Time Steps')
