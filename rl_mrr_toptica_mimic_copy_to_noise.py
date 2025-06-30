@@ -454,6 +454,11 @@ class RL_MRR_Env():
         Acav = torch.sqrt(self.alpha/2)*u0*np.exp(1j*torch.pi)/len(self.mu)
         Ecav = torch.fft.fftshift(torch.fft.fft(Acav))
 
+        cav = Fdrive_val*torch.sqrt(1-self.kext)
+        wg = torch.sqrt(1-self.kext)*u0*torch.exp(1j*torch.pi)
+        Awg = (wg + cav)/np.sqrt(len(self.mu))
+        self.Ewg = torch.fft.fftshift(torch.fft.fft(Awg))
+
         Acav_np = Acav.numpy()
         curr_pcav = np.sum(np.abs(Acav_np))
         self.pcav_hist.append(curr_pcav)

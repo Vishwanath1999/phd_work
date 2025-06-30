@@ -90,6 +90,8 @@ class RL_MRR_Env():
         alpha = k0+kext
         self.alpha = alpha
 
+        self.thermal_effect = thermal_effect
+
         if thermal_effect == 'low':
             self.xi = -1.2e4
         elif thermal_effect == 'moderate':
@@ -453,6 +455,11 @@ class RL_MRR_Env():
         Acav = torch.sqrt(self.alpha/2)*u0*np.exp(1j*torch.pi)/len(self.mu)
         Ecav = torch.fft.fftshift(torch.fft.fft(Acav))
 
+        cav = Fdrive_val*torch.sqrt(1-self.kext)
+        wg = torch.sqrt(1-self.kext)*u0*np.exp(1j*np.pi)
+        Awg = (wg + cav)/np.sqrt(len(self.mu))
+        Ewg = torch.fft.fftshift(torch.fft.fft(Awg))/np.sqrt(len(self.mu))
+
         Acav_np = Acav.numpy()
         curr_pcav = np.sum(np.abs(Acav_np))
         self.pcav_hist.append(curr_pcav)
@@ -494,12 +501,12 @@ class RL_MRR_Env():
             done = terminal
             
         
-        return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state
+        return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state, Ewg.cpu().numpy()
 
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='low')
+env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='high')
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -548,13 +555,15 @@ idx = 0
 done = False
 ecav_hist = []
 achieved = False
+delta_theta = []
+e_wg_hist = []
 while not done:
 # for idx in tqdm(range(env.init_steps_, int(env.max_steps)), ncols=120):
     # perform random actions
     # try:
         action = agent.choose_action(obs, True)
 
-        next_state, reward, done, terminal, achieved, acav_, ecav_ = env.step(state, action, desired_spectrum_tensor)
+        next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
         state = next_state
         ecav = ecav_
         ecav_obs = np.concatenate((ecav_[-1]/10, env.power/den, env.rescale_and_quantize(action[1:])*1e-6), axis=0)
@@ -565,6 +574,8 @@ while not done:
         pcav_hist.append(curr_pcav)
         r_hist.append(reward)
         action_hist.append(action)
+        delta_theta.append(env.delta_theta.item())
+        e_wg_hist.append(e_wg)
        
         acav_hist.append(acav_)
         idx += env.ctrl_freq
@@ -577,7 +588,7 @@ print('Test score %.2f' % score)
 import os
 
 # Create save directory if not exists
-save_dir = os.path.join('./results', agent.run_name)
+save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
 # %%
@@ -587,15 +598,14 @@ plt.plot(pcav_hist, linewidth=1.5)
 plt.grid()
 plt.xlabel('Steps', fontsize=16)
 plt.ylabel('Pcav', fontsize=16)
-plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
 plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
 if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_pcav_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_pcav_spec_all_ctrl.png'))
 plt.show()
-
 # %%
 import matplotlib.ticker as ticker
 
@@ -614,11 +624,11 @@ formatter.set_powerlimits((-1, 1))
 plt.gca().xaxis.set_major_formatter(formatter)
 plt.xlabel('Tuning Steps', fontsize=14)
 plt.ylabel(r'$t_R (ps)$', fontsize=14)
-plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_spec_all_ctrl.png'))
 plt.show()
 
 # %%
@@ -631,16 +641,37 @@ plt.imshow(spectrum_dBm, aspect='auto', cmap='jet'\
 plt.xlabel('Tuning Steps', fontsize=18)
 plt.ylabel(r'$\mu$' +'(rel)', fontsize=18)
 cbar = plt.colorbar()
+# set colorbar ticks size                                                 
+cbar.ax.tick_params(labelsize=16)
+cbar.set_label(r'Power $(dBm)$', fontsize=16)                                 
+plt.xticks(fontsize=14)
+plt.yticks(fontsize=14)
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.tight_layout()
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_ifft_spec_all_ctrl.png'))
+plt.show()
+# %%
+plt.figure(figsize=(14,4))
+e_wg_hist = np.array(e_wg_hist).T
+ewg_dBm = 10*np.log10(np.abs(e_wg_hist)**2)+30
+ewg_dBm = np.clip(ewg_dBm, -60, 50)
+plt.imshow(ewg_dBm, aspect='auto', cmap='jet'\
+            ,extent=[0, len(acav_hist), env.mu.min().item(), env.mu.max().item()])
+plt.xlabel('Tuning Steps', fontsize=18)
+plt.ylabel(r'$\mu$' +'(rel)', fontsize=18)
+cbar = plt.colorbar()
 # set colorbar ticks size
 cbar.ax.tick_params(labelsize=16)
 cbar.set_label(r'Power $(dBm)$', fontsize=16)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
-plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_hist_ifft_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ewg_hist_spec_all_ctrl.png'))
 plt.show()
 # %% Reward Plot
 plt.figure(figsize=(10, 6))
@@ -650,11 +681,11 @@ plt.ylabel('Reward ', fontsize=16)
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
 plt.grid()
-plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
 if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_rewards_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_rewards_spec_all_ctrl.png'))
 plt.show()
 # %%
 desired_spectrum_dBm_ = np.clip(desired_spectrum_dBm, -60, 10)
@@ -663,24 +694,26 @@ corr = np.corrcoef(desired_spectrum_dBm_, ecav_[-1])[0, 1]
 print('MSE:', mse, 'Corr:', corr)
 # %%
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
+obtained_spectrum = 10*np.log10(e_wg**2) + 30
+
 plt.figure(figsize=(14,4))
-plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ecav[-1], \
+plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), obtained_spectrum, \
            label='Obtained Spectrum',alpha=1, linewidth=1.5)
 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
 plt.xlabel('Rel. Mode no.', fontsize=18)
 plt.ylabel('Power(dBm)', fontsize=18)
 plt.grid()
-plt.ylim(-90,5)
-plt.xlim(-150, 150)
+plt.ylim(-90,50)
+# plt.xlim(-150, 150)
 plt.xticks(fontsize=18)
 plt.yticks(fontsize=18)
 plt.legend(fontsize=18,loc='lower center')
-plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_spec_all_ctrl_modes.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.png'))
 plt.show()
 
 plt.figure(figsize=(14,4))
@@ -696,11 +729,11 @@ plt.xlim(freq[220-150], freq[220+150])
 plt.xticks(fontsize=18, fontweight='bold')
 plt.yticks(fontsize=18, fontweight='bold')
 plt.legend(fontsize=18, loc='lower center')
-plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_ecav_spec_all_ctrl_freq.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.png'))
 plt.show()
 # %%
 action_hist = np.array(action_hist)
@@ -716,11 +749,11 @@ plt.grid()
 plt.xticks(fontsize=18)
 plt.yticks(fontsize=18)
 plt.gca().xaxis.set_major_formatter(formatter)
-plt.title('Pump Power: '+str(env.power[0])+'mW', fontsize=16, fontweight='bold')
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_actions_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_spec_all_ctrl.png'))
 plt.show()
 
 # %%
@@ -731,11 +764,25 @@ plt.ylabel('Pump Power (mW)', fontsize=18)
 plt.grid()
 plt.xticks(fontsize=18)
 plt.yticks(fontsize=18)
-plt.title('Pump Power: '+str(env.power[0])+' mW', fontsize=16, fontweight='bold')
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_actions_power_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_power_spec_all_ctrl.png'))
+plt.show()
+# %%
+plt.figure(figsize=(10, 6))
+plt.plot(np.array(delta_theta), linewidth=1.5)
+plt.xlabel('Tuning Steps', fontsize=18)
+plt.ylabel(r'$\delta _{\Theta}$', fontsize=18)
+plt.grid()
+plt.xticks(fontsize=18)
+plt.yticks(fontsize=18)
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.tight_layout()
+if idx > int(0.5*env.max_steps):
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_delta_theta_spec_all_ctrl.png'))
 plt.show()
 '''
 # %%

@@ -542,7 +542,7 @@ import os
 plt.style.use('physrev.mplstyle')
 
 algorithm_param = {
-    'max_num_iteration': 20,
+    'max_num_iteration': 30,
     'population_size': 40,
     'mutation_probability': 0.1,
     'elit_ratio': 0.01,
@@ -622,32 +622,32 @@ if __name__ == "__main__":
 # best_var = np.loadtxt('best_solution.txt', max_rows=1, delimiter=',')
 # best_fit = np.loadtxt('best_solution.txt', skiprows=1)# Extract the best parameters
 # '''
-fine = -0.60380473
-dwell_steps = int(36.42233374)  # Convert to integer for dwell steps
-pump_power = 0.88198465  # Assuming the third parameter is the pump power
-print(f"Running simulation with fine={rescale_and_quantize(fine)}, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)}")
-spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
-# plot the spectrum against the desired spectrum
-desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
-desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
-desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, 10)  # Clip to avoid extreme values
-# %%
-plt.style.use('physrev.mplstyle')
+# fine = -0.60380473
+# dwell_steps = int(36.42233374)  # Convert to integer for dwell steps
+# pump_power = 0.88198465  # Assuming the third parameter is the pump power
+# print(f"Running simulation with fine={rescale_and_quantize(fine)}, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)}")
+# spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
+# # plot the spectrum against the desired spectrum
+# desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
+# desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+# desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, 10)  # Clip to avoid extreme values
+# # %%
+# plt.style.use('physrev.mplstyle')
 
-plt.figure(figsize=(14, 4))
-plt.vlines(np.arange(-220,221,1),-60*np.ones(441), spec, label='Optimized Spectrum', color='blue')
-plt.vlines(np.arange(-220,221,1),-60*np.ones(441), desired_spectrum_dBm, label='Desired Spectrum', color='red', alpha=0.5)
-plt.title('Optimized Spectrum vs Desired Spectrum', fontsize=18, fontweight='bold')
-plt.xlabel('Mode no.', fontsize=16)
-plt.ylabel('Power (dBm)', fontsize=16)
-plt.xticks(fontsize=16)
-plt.yticks(fontsize=16)
-plt.ylim(-70, 10)
-plt.legend(fontsize=14)
-plt.grid()
-plt.tight_layout()
-plt.savefig('./GA_results/optimized_spectrum.png', dpi=300)
-plt.show()
+# plt.figure(figsize=(14, 4))
+# plt.vlines(np.arange(-220,221,1),-60*np.ones(441), spec, label='Optimized Spectrum', color='blue')
+# plt.vlines(np.arange(-220,221,1),-60*np.ones(441), desired_spectrum_dBm, label='Desired Spectrum', color='red', alpha=0.5)
+# plt.title('Optimized Spectrum vs Desired Spectrum', fontsize=18, fontweight='bold')
+# plt.xlabel('Mode no.', fontsize=16)
+# plt.ylabel('Power (dBm)', fontsize=16)
+# plt.xticks(fontsize=16)
+# plt.yticks(fontsize=16)
+# plt.ylim(-70, 10)
+# plt.legend(fontsize=14)
+# plt.grid()
+# plt.tight_layout()
+# plt.savefig('./GA_results/optimized_spectrum.png', dpi=300)
+# plt.show()
 # %%
 # import the population fitness mat file
 # population_fitness = loadmat('./GA_results/population_fitness.mat')['fitness']
