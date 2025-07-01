@@ -457,7 +457,7 @@ class RL_MRR_Env():
         cav = Fdrive_val*torch.sqrt(1-self.kext)
         wg = torch.sqrt(1-self.kext)*u0*torch.exp(1j*torch.pi)
         Awg = (wg + cav)/np.sqrt(len(self.mu))
-        self.Ewg = torch.fft.fftshift(torch.fft.fft(Awg))
+        Ewg = torch.fft.fftshift(torch.fft.fft(Awg))/np.sqrt(len(self.mu))
 
         Acav_np = Acav.numpy()
         curr_pcav = np.sum(np.abs(Acav_np))
@@ -500,7 +500,7 @@ class RL_MRR_Env():
             done = terminal
             
         
-        return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state
+        return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state, Ewg.cpu().numpy()
 
 # %%
 # torch seed

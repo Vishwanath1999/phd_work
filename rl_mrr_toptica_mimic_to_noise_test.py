@@ -456,7 +456,7 @@ class RL_MRR_Env():
         Ecav = torch.fft.fftshift(torch.fft.fft(Acav))
 
         cav = Fdrive_val*torch.sqrt(1-self.kext)
-        wg = torch.sqrt(1-self.kext)*u0*np.exp(1j*np.pi)
+        wg = torch.sqrt(1-self.kext)*u0*torch.exp(1j*torch.pi)
         Awg = (wg + cav)/np.sqrt(len(self.mu))
         Ewg = torch.fft.fftshift(torch.fft.fft(Awg))/np.sqrt(len(self.mu))
 
@@ -506,7 +506,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='high')
+env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='low')
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -694,7 +694,7 @@ corr = np.corrcoef(desired_spectrum_dBm_, ecav_[-1])[0, 1]
 print('MSE:', mse, 'Corr:', corr)
 # %%
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
-obtained_spectrum = 10*np.log10(e_wg**2) + 30
+obtained_spectrum = 10*np.log10(np.abs(e_wg)**2) + 30
 
 plt.figure(figsize=(14,4))
 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), obtained_spectrum, \
@@ -717,15 +717,15 @@ if idx > int(0.5*env.max_steps):
 plt.show()
 
 plt.figure(figsize=(14,4))
-plt.vlines(freq, -60*np.ones(len(ecav[-1])), ecav[-1], \
+plt.vlines(freq, -60*np.ones(len(ecav[-1])), obtained_spectrum, \
            label='Obtained Spectrum',alpha=1, linewidth=1.5)
 plt.vlines(freq, -60*np.ones(len(desired_spectrum)),\
             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
 plt.xlabel('Freq. (THz)', fontsize=18)
 plt.ylabel('Power(dBm)', fontsize=18)
 plt.grid()
-plt.ylim(-90,5)
-plt.xlim(freq[220-150], freq[220+150])
+plt.ylim(-90,50)
+# plt.xlim(freq[220-150], freq[220+150])
 plt.xticks(fontsize=18, fontweight='bold')
 plt.yticks(fontsize=18, fontweight='bold')
 plt.legend(fontsize=18, loc='lower center')
@@ -808,7 +808,7 @@ def run_test_processes(run_id, save_dir):
     }
     agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                     mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-                    eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'])
+                    eval_mode=True, fc_dim=config['fc_dim'])
     agent.load_models()
     state, _, ecav = env.reset(10000)
     den = env.p_max - env.p_min
@@ -826,7 +826,7 @@ def run_test_processes(run_id, save_dir):
         # try:
             action = agent.choose_action(obs, True)
 
-            next_state, reward, done, terminal, achieved, acav_, ecav_ = env.step(state, action, desired_spectrum_tensor)
+            next_state, reward, done, _, _, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
             state = next_state
             # ecav = ecav_
             ecav_obs = np.concatenate((ecav_[-1]/10, env.power/den, env.rescale_and_quantize(action[1:])*1e-6), axis=0)
@@ -841,6 +841,49 @@ def run_test_processes(run_id, save_dir):
 
     print('Test score %.2f' % score)
     mod_pow = str(np.round(env.power[0],4)).replace('.','_')
+    print('Chosen power:', env.power[0], 'W')
+
+    obtained_spectrum = 10*np.log10(np.abs(e_wg)**2) + 30
+
+    plt.figure(figsize=(14,4))
+    plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), obtained_spectrum, \
+            label='Obtained Spectrum',alpha=1, linewidth=1.5)
+    plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
+                desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
+    plt.xlabel('Rel. Mode no.', fontsize=18)
+    plt.ylabel('Power(dBm)', fontsize=18)
+    plt.grid()
+    plt.ylim(-90,50)
+    # plt.xlim(-150, 150)
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.legend(fontsize=18,loc='lower center')
+    plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
+    # mod_pow = str(env.power[0]).replace('.','_')
+    plt.tight_layout()
+    if score>12000:
+        plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.png'))
+    plt.show()
+
+    plt.figure(figsize=(14,4))
+    plt.vlines(freq, -60*np.ones(len(ecav[-1])), obtained_spectrum, \
+            label='Obtained Spectrum',alpha=1, linewidth=1.5)
+    plt.vlines(freq, -60*np.ones(len(desired_spectrum)),\
+                desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
+    plt.xlabel('Freq. (THz)', fontsize=18)
+    plt.ylabel('Power(dBm)', fontsize=18)
+    plt.grid()
+    plt.ylim(-90,50)
+    # plt.xlim(freq[220-150], freq[220+150])
+    plt.xticks(fontsize=18, fontweight='bold')
+    plt.yticks(fontsize=18, fontweight='bold')
+    plt.legend(fontsize=18, loc='lower center')
+    plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
+    mod_pow = str(env.power[0]).replace('.','_')
+    plt.tight_layout()
+    if score>12000:
+        plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.png'))
+    plt.show()
     
     # if env.step_cntr >= env.max_steps-env.init_steps_-2:
     print('Idx:', idx)
@@ -998,4 +1041,4 @@ if __name__ == '__main__':
     # # # Example usage: plot all reward histories with a rolling window of 100
     plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
     plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-'''
+# '''
