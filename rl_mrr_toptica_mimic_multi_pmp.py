@@ -305,10 +305,12 @@ class RL_MRR_Env():
         self.pcav_hist = []
 
         # self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
-        self.power = np.array([0.1])
+        self.power = 0.1*np.np.ones((len(self.ind_pmp),), dtype=np.float64)
+        self.phi_pmp = torch.zeros_like(self.ind_pmp, dtype=torch.float64, device=DEVICE)
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
 
-        for ii in range(len(Ppmp)):
+
+        for ii in range(len(self.ind_pmp)):
             self.Ein[ii,int(self.mu0+self.ind_pmp[ii])] = torch.sqrt(Ppmp[ii])*len(self.mu)
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
@@ -340,7 +342,7 @@ class RL_MRR_Env():
             Awg = (wg + cav)/np.sqrt(len(self.mu))
             Ewg = torch.fft.fftshift(torch.fft.fft(Awg))/np.sqrt(len(self.mu))
             Ecav_dBm = 10*torch.log10(torch.abs(Ewg)**2)+30
-            Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None)
+            Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=25)
             Acav_np = Acav.cpu().numpy()
             curr_pcav = np.sum(np.abs(Acav_np))
             self.pcav_hist.append(curr_pcav)
@@ -357,18 +359,39 @@ class RL_MRR_Env():
         print('Reset...')
         return self.state, Acav_np, self.ecav_state
 
+    def rescale_phase(self, phase, lower_limit=0, upper_limit=2*np.pi, step_size=np.pi/10):
+        """
+        Rescale input phase in [-1, 1] to [lower_limit, upper_limit] and quantize to step_size.
+
+        Parameters:
+            phase (float): Input value in [-1, 1]
+            lower_limit (float): Lower bound in radians (default 0)
+            upper_limit (float): Upper bound in radians (default 2π)
+            step_size (float): Quantization step in radians (default π/10)
+
+        Returns:
+            float: Quantized output in radians
+        """
+        # Clip the input to ensure it's within [-1, 1]
+        phase = np.clip(phase, -1, 1)
+        # Rescale to [lower_limit, upper_limit]
+        value = lower_limit + (phase + 1) * (upper_limit - lower_limit) / 2
+        # Quantize to nearest step_size
+        quantized_value = np.round(value / step_size) * step_size
+        return quantized_value
+
     def rescale_and_quantize(self,action, lower_limit=-1e6, upper_limit=1e6, step_size=1e4):
         """
         Rescale input in [-1, 1] to [lower_limit, upper_limit] and quantize to step_size.
 
         Parameters:
-            action (float): Input value in [-1, 1]
-            lower_limit (float): Lower bound in Hz (default -0.5 GHz)
-            upper_limit (float): Upper bound in Hz (default 0.5 GHz)
+            action (float or array-like): Input value(s) in [-1, 1]
+            lower_limit (float): Lower bound in Hz (default -1 MHz)
+            upper_limit (float): Upper bound in Hz (default 1 MHz)
             step_size (float): Quantization step in Hz (default 10 kHz)
 
         Returns:
-            float: Quantized output in Hz
+            float or ndarray: Quantized output in Hz (same shape as input)
         """
         # Clip the input to ensure it's within [-1, 1]
         action = np.clip(action, -1, 1)
@@ -378,18 +401,18 @@ class RL_MRR_Env():
         quantized_value = np.round(value / step_size) * step_size
         return quantized_value
     
-    def rescale_power(self, power, lower_limit=0.12, upper_limit=0.16, step_size=0.01):
+    def rescale_power(self, power, lower_limit=0.12, upper_limit=0.16, step_size=0.001):
         """
         Rescale input power in [-1, 1] to [lower_limit, upper_limit] and quantize to step_size.
 
         Parameters:
-            power (float): Input value in [-1, 1]
+            power (float or array-like): Input value(s) in [-1, 1]
             lower_limit (float): Lower bound in W (default 0.12 W)
             upper_limit (float): Upper bound in W (default 0.16 W)
-            step_size (float): Quantization step in W (default 0.001 W)
+            step_size (float): Quantization step in W (default 0.01 W)
 
         Returns:
-            float: Quantized output in W
+            float or ndarray: Quantized output in W (same shape as input)
         """
         # Clip the input to ensure it's within [-1, 1]
         power = np.clip(power, -1, 1)
@@ -424,14 +447,19 @@ class RL_MRR_Env():
         return terminal, reward_penalty
     
     def step(self, state, action, desired_spectrum):
-        env.power = self.rescale_power(action[0:1], lower_limit=self.p_min, upper_limit=self.p_max, step_size=0.001)
+        env.power = self.rescale_power(action[0:2], lower_limit=self.p_min, upper_limit=self.p_max, step_size=0.001)
         self.env_p_hist.append(env.power[0])
         if len(self.env_p_hist) > env.seq_len:
             self.env_p_hist.pop(0)
         
+        env.phi_pmp = self.rescale_phase(action[2], lower_limit=0, upper_limit=2*np.pi, step_size=np.pi/10)
+        # insert 0 at the beginning of phi_pmp
+        env.phi_pmp = np.insert(env.phi_pmp, 0, 0)
+        env.phi_pmp = torch.tensor(env.phi_pmp, dtype=torch.float64, device=DEVICE)
+
         Ppmp = torch.tensor(env.power, dtype=torch.float64)
         
-        for ii in range(1):
+        for ii in range(len(self.ind_pmp)):
             self.Ein[ii,int(self.mu0+self.ind_pmp[ii])] = torch.sqrt(Ppmp[ii])*len(self.mu)
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
@@ -470,9 +498,9 @@ class RL_MRR_Env():
             self.pcav_hist.pop(0)
 
         Ecav_dBm = 10*torch.log10(torch.abs(Ewg)**2)+30
-        Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None) # -60 dBm is the minimum power level we want to consider
+        Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=25)
         desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
-        desired_spectrum_dBm = torch.clamp(desired_spectrum_dBm, min=-60, max=None) # -60 dBm is the minimum power level we want to consider
+        desired_spectrum_dBm = torch.clamp(desired_spectrum_dBm, min=-60, max=25)
 
         
         # pop the first element of ecav_state and append new Ecav_dBm
@@ -515,7 +543,7 @@ freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
 desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30 +10
-desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
+desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, 5)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 config = {
@@ -568,6 +596,7 @@ if config['train']:
         logs['pump power'] = env.power
         obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
         pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=i, desc='Episode %d' % i)
+        prev_power = env.power
         while not done:
             action = agent.choose_action(obs)
             
@@ -609,7 +638,7 @@ if config['train']:
                 plt.xlabel('Rel. Mode no.', fontsize=16)
                 plt.ylabel('Power(dBm)', fontsize=16)
                 plt.grid()
-                plt.ylim(-90,25)
+                plt.ylim(-90,15)
                 plt.xlim(-180,180)
                 plt.xticks(fontsize=16)
                 plt.yticks(fontsize=16)
@@ -628,7 +657,7 @@ if config['train']:
                 plt.xlabel('Freq (THz).', fontsize=16)
                 plt.ylabel('Power(dBm)', fontsize=16)
                 plt.grid()
-                plt.ylim(-90,25)
+                plt.ylim(-90,15)
                 plt.xlim(freq[220-180],freq[220+180])
                 plt.xticks(fontsize=16)
                 plt.yticks(fontsize=16)
