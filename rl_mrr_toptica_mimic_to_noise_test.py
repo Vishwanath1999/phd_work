@@ -452,11 +452,11 @@ class RL_MRR_Env():
             self.step_cntr += 1
         self.next_state = u0
         
-        Acav = torch.sqrt(self.alpha/2)*u0*np.exp(1j*torch.pi)/len(self.mu)
+        Acav = torch.sqrt(self.alpha/2)*u0*np.exp(1j*np.pi)/len(self.mu)
         Ecav = torch.fft.fftshift(torch.fft.fft(Acav))
 
         cav = Fdrive_val*torch.sqrt(1-self.kext)
-        wg = torch.sqrt(1-self.kext)*u0*torch.exp(1j*torch.pi)
+        wg = torch.sqrt(self.kext)*u0*np.exp(1j*np.pi)
         Awg = (wg + cav)/np.sqrt(len(self.mu))
         Ewg = torch.fft.fftshift(torch.fft.fft(Awg))/np.sqrt(len(self.mu))
 
@@ -695,6 +695,8 @@ print('MSE:', mse, 'Corr:', corr)
 # %%
 # desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
 obtained_spectrum = 10*np.log10(np.abs(e_wg)**2) + 30
+desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
 
 plt.figure(figsize=(14,4))
 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), obtained_spectrum, \
@@ -704,8 +706,8 @@ plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
 plt.xlabel('Rel. Mode no.', fontsize=18)
 plt.ylabel('Power(dBm)', fontsize=18)
 plt.grid()
-plt.ylim(-90,50)
-# plt.xlim(-150, 150)
+plt.ylim(-90,30)
+plt.xlim(-150, 150)
 plt.xticks(fontsize=18)
 plt.yticks(fontsize=18)
 plt.legend(fontsize=18,loc='lower center')
@@ -724,8 +726,8 @@ plt.vlines(freq, -60*np.ones(len(desired_spectrum)),\
 plt.xlabel('Freq. (THz)', fontsize=18)
 plt.ylabel('Power(dBm)', fontsize=18)
 plt.grid()
-plt.ylim(-90,50)
-# plt.xlim(freq[220-150], freq[220+150])
+plt.ylim(-90,30)
+plt.xlim(freq[220-150], freq[220+150])
 plt.xticks(fontsize=18, fontweight='bold')
 plt.yticks(fontsize=18, fontweight='bold')
 plt.legend(fontsize=18, loc='lower center')
