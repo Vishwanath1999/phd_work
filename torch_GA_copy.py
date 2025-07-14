@@ -11,9 +11,9 @@ import pandas as pd
 
 device = 'cpu'#torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-disp = loadmat('disp.mat')
-res = loadmat('res.mat')
-sim = loadmat('sim.mat')
+disp = loadmat('disp_copy.mat')
+res = loadmat('res_copy.mat')
+sim = loadmat('sim_copy.mat')
 
 # df = pd.read_csv('./DKS_init.csv')
 # df["DKS_init"] = df.DKS_init.apply(lambda val: complex(val.strip('()')))
@@ -225,12 +225,12 @@ def Fdrive(it, A_in):
         Force = Force - 1j*A_in[ii]*torch.exp(1j*sigma)
     return Force + Noise(h_bar, omega1, int(len(mu)), device)
 
-def SaveStatus_Callback(it, saved_data, u0, param):
+def SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val):
     # if it*num_probe/Nt > param['probe']:
     saved_data['u_probe'][param['probe'],:] = u0
     saved_data['detuning'][param['probe']] = del_omega_all[0][it]
     saved_data['t_sim'][param['probe']] = t_sim[it]
-    # saved_data['driving_force'][param['probe'],:] = Fdrive(it)
+    saved_data['driving_force'][param['probe'],:] = Fdrive_val
     param['probe'] += 1
     return param
 
@@ -311,7 +311,7 @@ def ssfm_step(A0: torch.Tensor, it: int, alpha: torch.Tensor, Dint_shift: torch.
     err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
     raise ValueError(f"Convergence Error: {err}")
 
-def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False):
+def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton='moderate'):
     param = dict()
     param['tol'] = 1e-3
     param['max_iter'] = max_iter
@@ -322,7 +322,14 @@ def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False):
     delta_theta = torch.tensor(0.0, dtype=torch.float64, device=device)  # Initialize δΘ
     # Thermal parameters (Bao et al. 2017)
     tau0 = 100e-9       # Thermal response time (100 ns)
-    xi = -4.5e4         # Thermo-optic coefficient (W⁻¹s⁻¹)
+    if ton == 'weak':
+        xi = -1.2e4         # Thermo-optic coefficient (W⁻¹s⁻¹)
+    elif ton == 'moderate':
+        xi = -4.5e4         # Thermo-optic coefficient (W⁻¹s⁻¹)
+    elif ton == 'strong':
+        xi = -1.2e5         # Thermo-optic coefficient (W⁻¹s⁻¹)
+    else:
+        raise ValueError("Invalid value for 'ton'. Choose from 'weak', 'moderate', or 'strong'.")
 
     for it in iterator:
         del_omega_all[0, it] += delta_theta
@@ -332,9 +339,9 @@ def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False):
         # Update thermal detuning
         P_avg = torch.mean(torch.abs(u0)**2)  # Compute average power
         d_delta_theta_dt = -delta_theta / tau0 + xi * P_avg
-        delta_theta += (dt * tR) * d_delta_theta_dt  # Euler step
+        delta_theta += (1 * tR) * d_delta_theta_dt  # Euler step
         if it*num_probe/Nt > param['probe']:
-            param = SaveStatus_Callback(it, saved_data, u0, param)
+            param = SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val)
     return saved_data
     # SaveData(saved_data,name)
 
@@ -462,17 +469,16 @@ def reset_saved_data():
 # spec_dBm = 10 * np.log10(np.abs(Ecav)**2) + 30
 # spec_dBm = np.clip(spec_dBm, -60, 10)  # Clip to avoid extreme values
 # %%
-def LLE(fine, dwell_steps, pump_power, progress_bar=False):
+def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate'):
     """
     Main function to run the LLE simulation with given parameters.
     
     Args:
-        coarse (float): Coarse adjustment in [-1, 1].
         fine (float): Fine adjustment in [-1, 1].
         dwell_steps (int): Number of steps to dwell before applying delta.
-        Nt (int): Total number of time steps.
-        saved_data (dict): Dictionary to save simulation data.
-        u0 (torch.Tensor): Initial field state.
+        pump_power (float): Pump power in W.
+        progress_bar (bool): Whether to show a progress bar (default: False).
+        ton (str): Thermal response type ('weak', 'moderate', 'strong').
         
     Returns:
         dict: Updated saved_data with simulation results.
@@ -502,17 +508,33 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False):
     np_dict = tensor_to_dict(saved_data)
     Acav = np.sqrt(np_dict['alpha']/2)* np_dict['u_probe']*np.exp(1j*np.pi)/np.sqrt(np_dict['u_probe'].shape[1])
     Ecav = np.fft.fftshift(np.fft.fft(Acav, axis=1),axes=1)/np.sqrt(np_dict['u_probe'].shape[1])
-    spec_dBm = 10 * np.log10(np.abs(Ecav)**2) + 30
-    spec_dBm = np.clip(spec_dBm, -60, 10)  # Clip to avoid extreme values
+
+    wg = np_dict['driving_force'] * np.sqrt(1-np_dict['kappa_ext'])
+    cav = np.sqrt(np_dict['kappa_ext'])*np_dict['u_probe']*np.exp(1j*np.pi)
+
+    Awg = (wg+cav)/np.sqrt(np_dict['u_probe'].shape[1])
+    Ewg = np.fft.fftshift(np.fft.fft(Awg, axis=1),axes=1)/np.sqrt(np_dict['u_probe'].shape[1])
+
+    spec_dBm = 10 * np.log10(np.abs(Ewg)**2) + 30
+    spec_dBm = np.clip(spec_dBm, -60, None)  # Clip to avoid extreme values
     if progress_bar:
         plt.figure(figsize=(14, 4))
-        plt.imshow(np.abs(Acav.T), aspect='auto', cmap='jet')
-        plt.colorbar(label='Field Amplitude')
-        plt.title('Field Amplitude Over Time')
-        plt.xlabel('Time Steps')
-        plt.ylabel('Longitudinal Coordinate')
+        plt.imshow(1e3*np.abs(Acav.T), aspect='auto', cmap='jet', extent=[0,len(Awg), -tR.item()*1e12/2, tR.item()*1e12/2], origin='lower')
+        cbar = plt.colorbar()
+        cbar.ax.tick_params(labelsize=16)
+        cbar.set_label(r'Power $(mW)$', fontsize=16)
+        formatter = ticker.ScalarFormatter(useMathText=True)
+        formatter.set_scientific(True)
+        formatter.set_powerlimits((-1, 1))
+        plt.gca().xaxis.set_major_formatter(formatter)
+        plt.title('Field Amplitude Over Time (ton=' + ton + ')', fontsize=18, fontweight='bold')
+        plt.xlabel('Tuning Steps', fontsize=18)
+        plt.ylabel(r'$t_R$ (ps)', fontsize=18)
         plt.tight_layout()
-        plt.savefig('./GA_results/field_amplitude.png', dpi=300)
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.savefig('./GA_results/field_amplitude_ton_' + ton + '.png')
+        plt.savefig('./GA_results/field_amplitude_ton_' + ton + '.svg', format='svg')
         plt.show()
     return spec_dBm[-1]
 # %%
@@ -520,9 +542,9 @@ def fitness(spec):
     """
     Calculate the fitness of the spectrum.
     """
-    desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
+    desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
     desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
-    desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, 10)  # Clip to avoid extreme values
+    desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)  # Clip to avoid extreme values
     mse = np.mean((spec - desired_spectrum_dBm)**2)
     return mse
 
@@ -538,13 +560,14 @@ def objective(X):
 # %%
 from GA_lib2 import geneticalgorithm
 import os
+import matplotlib.ticker as ticker
 
 plt.style.use('physrev.mplstyle')
 
 algorithm_param = {
-    'max_num_iteration': 30,
+    'max_num_iteration': 20,
     'population_size': 40,
-    'mutation_probability': 0.1,
+    'mutation_probability': 0.25,
     'elit_ratio': 0.01,
     'crossover_probability': 0.5,
     'parents_portion': 0.3,
@@ -553,18 +576,18 @@ algorithm_param = {
 }
 
 if __name__ == "__main__":
-    varbound = np.array([[-1, 1], [1, 100], [-1,1]])  # Adjust range as needed
+    varbound = np.array([[-1, 1], [100, 500], [-1,1]])  # Adjust range as needed
     seed = 42  # Set a seed for reproducibility
     model = geneticalgorithm(
         function=objective,
         dimension=3,
         variable_boundaries=varbound,
         parallel=True,
-        n_processes=10,
+        n_processes=15,
         progress_bar=True,
         algorithm_parameters=algorithm_param,
-        random_seed=seed,
-        fitness_threshold=1e-5,
+        # random_seed=seed,
+        fitness_threshold=0.2,  # Set a fitness threshold for early stopping
     )
     save_dir = os.path.join(os.getcwd(), 'GA_results')
     if not os.path.exists(save_dir):
@@ -582,9 +605,9 @@ if __name__ == "__main__":
     fine = best_var[0]
     dwell_steps = int(best_var[1])  # Convert to integer for dwell steps
     domega = initialize_del_omega_all(fine, dwell_steps, Nt.item(), del_omega_init, del_omega_end, rescale_and_quantize, device).cpu().numpy()
-    domega = np.cumsum(domega)*1e-9/(2*np.pi)
+    domega = np.cumsum(domega)*1e-9/(2*np.pi) + del_omega_init.cpu().numpy()*1e-9/(2*np.pi)  # Convert to GHz
     plt.figure(figsize=(10,6))
-    plt.plot(domega, linewidth=1.5)
+    plt.plot(domega*1e-9, linewidth=1.5)
     plt.xlabel('Tuning Steps', fontsize=16)
     plt.ylabel('Detuning (GHz)', fontsize=16)
     plt.title('Detuning vs Tuning Steps', fontsize=18, fontweight='bold')
@@ -593,14 +616,54 @@ if __name__ == "__main__":
     plt.yticks(fontsize=16)
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'detuning_vs_tuning_steps.png'), dpi=300)
+    plt.savefig(os.path.join(save_dir, 'detuning_vs_tuning_steps.svg'), dpi=300, format='svg')
     plt.show()
     pump_power = best_var[2]  # Assuming the third parameter is the pump power
-    print(f"Running simulation with fine={rescale_and_quantize(best_var[0])}, dwell_steps={dwell_steps}, pump_power={rescale_power(best_var[2])}")
-    spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
-    # plot the spectrum against the desired spectrum
-    desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
-    desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
-    desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, 10)  # Clip to avoid extreme values
+    
+    for ton_case in ['weak', 'moderate', 'strong']:
+        print(f"Running simulation with ton='{ton_case}', fine={rescale_and_quantize(best_var[0])}, dwell_steps={dwell_steps}, pump_power={rescale_power(best_var[2])}")
+        spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
+        desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+        desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+        desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
+        plt.figure(figsize=(14, 4))
+        plt.vlines(np.arange(-220,221,1),-60*np.ones(441), spec, label='Optimized Spectrum', color='blue')
+        plt.vlines(np.arange(-220,221,1),-60*np.ones(441), desired_spectrum_dBm, label='Desired Spectrum', color='red', alpha=0.5)
+        plt.title(f'Optimized Spectrum vs Desired Spectrum (ton={ton_case})', fontsize=18, fontweight='bold')
+        plt.xlabel('Mode no.', fontsize=16)
+        plt.ylabel('Power (dBm)', fontsize=16)
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.ylim(-70, 30)
+        plt.xlim(-180,180)
+        plt.legend(fontsize=14)
+        plt.grid()
+        plt.tight_layout()
+        plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.png', dpi=300)
+        plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.svg', dpi=300, format='svg')
+        plt.show()
+# %%
+plt.style.use('physrev.mplstyle')
+
+# run the simulation with best params
+# load the best solution from file
+# best_var = np.loadtxt('best_solution.txt', max_rows=1, delimiter=',')
+# best_fit = np.loadtxt('best_solution.txt', skiprows=1)# Extract the best parameters
+# ''' -0.88501114 168.78302798  0.64869831
+fine = -0.88501114
+dwell_steps = int(168.78302798)  # Convert to integer for dwell steps
+pump_power = 0.64869831  # Assuming the third parameter is the pump power
+# print(f"Running simulation with fine={rescale_and_quantize(fine)}, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)}")
+# spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
+# plot the spectrum against the desired spectrum
+desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)  # Clip to avoid extreme values
+
+for ton_case in ['weak', 'moderate', 'strong']:
+    print(f"Running simulation with ton='{ton_case}', fine={rescale_and_quantize(fine)}, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)}")
+    spec = LLE(fine, dwell_steps, pump_power, progress_bar=True, ton=ton_case)
+    
     plt.figure(figsize=(14, 4))
     plt.vlines(np.arange(-220,221,1),-60*np.ones(441), spec, label='Optimized Spectrum', color='blue')
     plt.vlines(np.arange(-220,221,1),-60*np.ones(441), desired_spectrum_dBm, label='Desired Spectrum', color='red', alpha=0.5)
@@ -609,45 +672,13 @@ if __name__ == "__main__":
     plt.ylabel('Power (dBm)', fontsize=16)
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
-    plt.ylim(-70, 10)
-    plt.xlim(-150,150)
+    plt.ylim(-70, 30)
     plt.legend(fontsize=14)
     plt.grid()
     plt.tight_layout()
-    plt.savefig('./GA_results/optimized_spectrum.png', dpi=300)
+    plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.png')
+    plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.svg', format='svg')
     plt.show()
-# %%
-# run the simulation with best params
-# load the best solution from file
-# best_var = np.loadtxt('best_solution.txt', max_rows=1, delimiter=',')
-# best_fit = np.loadtxt('best_solution.txt', skiprows=1)# Extract the best parameters
-# '''
-# fine = -0.60380473
-# dwell_steps = int(36.42233374)  # Convert to integer for dwell steps
-# pump_power = 0.88198465  # Assuming the third parameter is the pump power
-# print(f"Running simulation with fine={rescale_and_quantize(fine)}, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)}")
-# spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
-# # plot the spectrum against the desired spectrum
-# desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
-# desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
-# desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, 10)  # Clip to avoid extreme values
-# # %%
-# plt.style.use('physrev.mplstyle')
-
-# plt.figure(figsize=(14, 4))
-# plt.vlines(np.arange(-220,221,1),-60*np.ones(441), spec, label='Optimized Spectrum', color='blue')
-# plt.vlines(np.arange(-220,221,1),-60*np.ones(441), desired_spectrum_dBm, label='Desired Spectrum', color='red', alpha=0.5)
-# plt.title('Optimized Spectrum vs Desired Spectrum', fontsize=18, fontweight='bold')
-# plt.xlabel('Mode no.', fontsize=16)
-# plt.ylabel('Power (dBm)', fontsize=16)
-# plt.xticks(fontsize=16)
-# plt.yticks(fontsize=16)
-# plt.ylim(-70, 10)
-# plt.legend(fontsize=14)
-# plt.grid()
-# plt.tight_layout()
-# plt.savefig('./GA_results/optimized_spectrum.png', dpi=300)
-# plt.show()
 # %%
 # import the population fitness mat file
 # population_fitness = loadmat('./GA_results/population_fitness.mat')['fitness']

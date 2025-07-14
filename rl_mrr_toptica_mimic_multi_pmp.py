@@ -26,9 +26,9 @@ class RL_MRR_Env():
 
         self.step_cntr = 0
         
-        self.disp = loadmat('disp_copy.mat')
-        self.res = loadmat('res_copy.mat')
-        self.sim = loadmat('sim_copy.mat')
+        self.disp = loadmat('disp.mat')
+        self.res = loadmat('res.mat')
+        self.sim = loadmat('sim.mat')
 
 
         self.sim['DKS_init'] = np.array([complex(x.strip()) for x in self.sim['DKS_init']])
@@ -176,9 +176,7 @@ class RL_MRR_Env():
         self.t_sim_start = -t_ramp/2 + del_omega_perc[0]*t_ramp
         self.t_sim_step = self.t_sim[1] - self.t_sim[0]
 
-        self.pcav_ref = loadmat('ref_check.mat')['Pcomb'].T
         self.primary_sidebands = loadmat('primary_sidebands.mat')['spec'][0]
-        # self.pcav_ref = loadmat('Pcomb_rl_allv2.mat')['Pcomb'].T
         self.seq_len = seq_len
         self.p_max = p_max
         self.p_min = p_min
@@ -202,7 +200,7 @@ class RL_MRR_Env():
             else:
                 sigma=torch.zeros(1, device=DEVICE)
             Force = Force - 1j*Ain[ii]*torch.exp(1j*sigma)
-        return Force + self.Noise(h_bar=H_BAR, omega1=2*torch.pi*self.sim_tensor['f_pmp'], mu_len=len(self.mu), device=DEVICE)
+        return Force + self.Noise(h_bar=H_BAR, omega1=2*torch.pi*self.sim_tensor['f_pmp'][0], mu_len=len(self.mu), device=DEVICE)
 
     def dict_to_tensor(self,dic):
         dic.pop('__header__', None)
@@ -251,7 +249,7 @@ class RL_MRR_Env():
         Output:
             torch.Tensor : Linear operator
         '''
-        return (-alpha / 2) + 1j * (Dint_shift - del_omega_all + delta_theta) * tR
+        return (-alpha / 2) + 1j * (Dint_shift - del_omega_all[0] + delta_theta) * tR
 
 
     # Function for the Nonlinear operator
@@ -299,15 +297,17 @@ class RL_MRR_Env():
     def reset(self, steps=None):
         print('Detuning range:', self.del_omega_init.item()/(2*np.pi*1e9), ' to ', self.del_omega_end.item()/(2*np.pi*1e9), ' GHz')
         self.state = self.DKS_init
-        self.current_del_omega = self.del_omega_0
+        self.current_del_omega = self.del_omega_0*torch.ones(len(env.ind_pmp))
+        self.current_del_omega[1:] = 0  # Set all but the first detuning to zero for initialization
         self.delta_theta = torch.tensor(0.0, device=DEVICE, dtype=torch.float64)
         self.step_cntr = 0
         self.pcav_hist = []
 
         # self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
-        self.power = 0.1*np.np.ones((len(self.ind_pmp),), dtype=np.float64)
-        self.phi_pmp = torch.zeros_like(self.ind_pmp, dtype=torch.float64, device=DEVICE)
-        Ppmp = torch.tensor(self.power, dtype=torch.float64)
+        self.power = 0.1*np.ones((len(self.ind_pmp),), dtype=np.float64)
+        self.phi_pmp = np.zeros_like(self.ind_pmp, dtype=np.float64)
+        Ppmp = torch.tensor(self.power, dtype=torch.float64, device=DEVICE)
+        self.phi_pmp = torch.tensor(self.phi_pmp, dtype=torch.float64, device=DEVICE)
 
 
         for ii in range(len(self.ind_pmp)):
@@ -324,6 +324,7 @@ class RL_MRR_Env():
         for idx in range(self.init_steps_):
             mul_factor = np.random.choice([1, -1, 0], p=[1/3, 1/3, 1/3])
             del_omega = self.current_del_omega + mul_factor*(1/self.Nt)*(self.del_omega_end - self.del_omega_init)
+            del_omega[1:] = 0  # Set all but the first detuning to zero for initialization
 
             Fdrive_val = self.Fdrive(del_omega, self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain)
             u0 = self.ssfm_step(self.state, self.step_cntr, self.alpha, self.Dint_shift, del_omega, self.tR, self.gamma, \
@@ -342,7 +343,7 @@ class RL_MRR_Env():
             Awg = (wg + cav)/np.sqrt(len(self.mu))
             Ewg = torch.fft.fftshift(torch.fft.fft(Awg))/np.sqrt(len(self.mu))
             Ecav_dBm = 10*torch.log10(torch.abs(Ewg)**2)+30
-            Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=25)
+            Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None)
             Acav_np = Acav.cpu().numpy()
             curr_pcav = np.sum(np.abs(Acav_np))
             self.pcav_hist.append(curr_pcav)
@@ -354,7 +355,7 @@ class RL_MRR_Env():
         self.primary_sidebands_flag = False
         self.ecav_state = np.array(self.ecav_state)
 
-        self.env_p_hist = []
+        # self.env_p_hist = []
         
         print('Reset...')
         return self.state, Acav_np, self.ecav_state
@@ -422,10 +423,11 @@ class RL_MRR_Env():
         quantized_value = np.round(value / step_size) * step_size
         return quantized_value
     
-    def is_terminal(self, Ecav_dBm, desired_spectrum_dBm, achieved):
+    def is_terminal(self, Ecav_dBm, desired_spectrum_dBm, reward):
         terminal = False
         reward_penalty = 0
-        corr = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item()
+
+        corr = reward
         if self.step_cntr<45000 and self.primary_sidebands_flag==False:
             self.primary_sidebands_flag = np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1]<0.5
         
@@ -446,16 +448,14 @@ class RL_MRR_Env():
         #     print('Spectral Corr:', corr)
         return terminal, reward_penalty
     
+    
     def step(self, state, action, desired_spectrum):
-        env.power = self.rescale_power(action[0:2], lower_limit=self.p_min, upper_limit=self.p_max, step_size=0.001)
-        self.env_p_hist.append(env.power[0])
-        if len(self.env_p_hist) > env.seq_len:
-            self.env_p_hist.pop(0)
+        env.power = self.rescale_power(action[0:3], lower_limit=self.p_min, upper_limit=self.p_max, step_size=0.001)
+        # self.env_p_hist.append(env.power[0])
+        # if len(self.env_p_hist) > env.seq_len:
+        #     self.env_p_hist.pop(0)
         
-        env.phi_pmp = self.rescale_phase(action[2], lower_limit=0, upper_limit=2*np.pi, step_size=np.pi/10)
-        # insert 0 at the beginning of phi_pmp
-        env.phi_pmp = np.insert(env.phi_pmp, 0, 0)
-        env.phi_pmp = torch.tensor(env.phi_pmp, dtype=torch.float64, device=DEVICE)
+        # self.phi_pmp = np.zeros_like(self.ind_pmp, dtype=np.float64)
 
         Ppmp = torch.tensor(env.power, dtype=torch.float64)
         
@@ -464,7 +464,8 @@ class RL_MRR_Env():
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
         # det_delta = action*(2/self.Nt)*(self.del_omega_end - self.del_omega_init)
-        det_delta = self.rescale_and_quantize(action[1])*(2*np.pi)  # Convert GHz to rad/s
+        det_delta = self.rescale_and_quantize(action[3:])*(2*np.pi)  # Convert GHz to rad/s
+        det_delta = np.append(det_delta, np.zeros((len(self.ind_pmp)-1,), dtype=np.float64))  # Pad with zeros if needed
         
         for _ in range(self.ctrl_freq):
             del_omega = self.current_del_omega + det_delta + self.delta_theta
@@ -498,9 +499,9 @@ class RL_MRR_Env():
             self.pcav_hist.pop(0)
 
         Ecav_dBm = 10*torch.log10(torch.abs(Ewg)**2)+30
-        Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=25)
+        Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None)
         desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
-        desired_spectrum_dBm = torch.clamp(desired_spectrum_dBm, min=-60, max=25)
+        desired_spectrum_dBm = torch.clamp(desired_spectrum_dBm, min=-60, max=None)
 
         
         # pop the first element of ecav_state and append new Ecav_dBm
@@ -509,12 +510,23 @@ class RL_MRR_Env():
             self.ecav_state = np.delete(self.ecav_state, 0, axis=0)
         self.ecav_state = np.concatenate((self.ecav_state, Ecav_dBm.cpu().numpy()[np.newaxis,:]), axis=0)
 
-        reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() #+ 1
+        # # Create indices to exclude (convert pump indices to spectrum indices)
+        exclude_indices = [self.mu0 + pump_idx for pump_idx in self.ind_pmp 
+                        if 0 <= self.mu0 + pump_idx < len(desired_spectrum_dBm)]
+        exclude_indices = torch.tensor(exclude_indices, device=DEVICE)
+
+        # Create boolean mask more efficiently
+        mask = torch.ones(len(desired_spectrum_dBm), dtype=torch.bool, device=DEVICE)
+        mask[exclude_indices] = False
+
+        # Calculate correlation on filtered data
+        reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm[mask], Ecav_dBm[mask]]))[0,1].item() #+ 1
+        # reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() #+ 1
         # penalize for high variance in power
-        if len(self.env_p_hist) > 1:
-            power_var = np.std(self.env_p_hist)
-            if power_var > 0.001:
-                reward -= 2*len(self.env_p_hist) * (power_var - 0.001)
+        # if len(self.env_p_hist) > 1:
+        #     power_var = np.std(self.env_p_hist)
+        #     if power_var > 0.001:
+        #         reward -= 2*len(self.env_p_hist) * (power_var - 0.001)
         
         if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50 or torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() > 0.9:
             achieved = True
@@ -523,7 +535,7 @@ class RL_MRR_Env():
             achieved = False
 
         done = False
-        terminal, reward_penalty = self.is_terminal(Ecav_dBm, desired_spectrum_dBm, achieved)
+        terminal, reward_penalty = self.is_terminal(Ecav_dBm, desired_spectrum_dBm, reward/4)
         reward += reward_penalty
 
         if self.step_cntr+1 >= self.max_steps:
@@ -537,22 +549,22 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='moderate')
-fpmp = env.sim_tensor['f_pmp'].item()
+env = RL_MRR_Env(seq_len=100, p_max=0.18, p_min=0.01, ctrl_freq=100, thermal_effect='moderate')
+fpmp = env.sim_tensor['f_pmp'][0].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
-desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
-desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30 +10
-desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, 5)
+desired_spectrum = loadmat('desired_spec_multi_pmp.mat')['Ewg'][0]
+desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30 
+desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 config = {
-    'input_dim': [env.seq_len, 441+2],
-    'n_actions': 2,
+    'input_dim': [env.seq_len, 300+4],
+    'n_actions': 4,  # 3 pump powers and 1 detuning
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v2',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_multi_pmp',
     'batch_size': 128,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
@@ -593,8 +605,8 @@ if config['train']:
         done = False
         n_steps = 0
         state, acav, ecav = env.reset(10000)
-        logs['pump power'] = env.power
-        obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
+        # logs['pump power'] = env.power
+        obs = np.concatenate((ecav[:,441//2 - 150:441//2 + 150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
         pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=i, desc='Episode %d' % i)
         prev_power = env.power
         while not done:
@@ -602,11 +614,16 @@ if config['train']:
             
             next_state, reward, done, terminal, achieved, _, ecav_, ewg = env.step(state, action, desired_spectrum_tensor)
             # log perf action
-            logs['power (W)'] = env.power
-            logs['detuning (MHz)'] = env.rescale_and_quantize(action[1])*1e-6
+            for idx in range(3):
+                logs['pump power '+str(idx+1)+' W'] = env.power[idx]
+
+            logs['detuning (MHz)'] = env.rescale_and_quantize(action[3])*1e-6
+            # logs['power (W)'] = env.power
+            # logs['detuning (MHz)'] = env.rescale_and_quantize(action[1])*1e-6
+            
             logs['reward'] = reward  
             
-            ecav_obs = np.concatenate((ecav_[-1]/10, env.power/den, env.rescale_and_quantize(action[1:])*1e-6), axis=0)
+            ecav_obs = np.concatenate((ecav_[-1, 441//2-150:441//2+150]/10, env.power/den, env.rescale_and_quantize(action[3:])*1e-6), axis=0)
             obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
             obs = obs_   
             agent.remember(obs, action, reward, obs_, terminal)
@@ -617,7 +634,7 @@ if config['train']:
             pbar.update(env.ctrl_freq)
 
             ewg_dBm = 10*np.log10(np.abs(ewg)**2)+30
-            ewg_dBm = np.clip(ewg_dBm, -60, 20)
+            ewg_dBm = np.clip(ewg_dBm, -60, None)
             
             if agent.memory.mem_cntr > 4*agent.batch_size:
                 cl, al, ent_loss, ent_coeff = agent.learn(global_n_steps)
@@ -627,7 +644,7 @@ if config['train']:
                 logs['entropy_coeff'] = ent_coeff
                 # print('Critic loss:', cl, 'Actor loss:', al, 'Entropy loss:', ent_loss, 'Entropy coeff:', ent_coeff)
 
-            if env.step_cntr>=int(0.9*env.Nt) and done==True:
+            if env.step_cntr>=int(0.9*env.Nt) and done==False:
                 
                 fig=plt.figure(figsize=(14,4))
                 plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), ewg_dBm, \
@@ -638,12 +655,12 @@ if config['train']:
                 plt.xlabel('Rel. Mode no.', fontsize=16)
                 plt.ylabel('Power(dBm)', fontsize=16)
                 plt.grid()
-                plt.ylim(-90,15)
+                plt.ylim(-90,35)
                 plt.xlim(-180,180)
                 plt.xticks(fontsize=16)
                 plt.yticks(fontsize=16)
                 plt.legend(fontsize=16, loc='lower center')
-                plt.title('Correlation '+str(np.round(np.corrcoef(ewg_dBm, np.clip(desired_spectrum_dBm,-60,20))[0,1],2)), fontsize=14)
+                plt.title('Correlation '+str(np.round(np.corrcoef(ewg_dBm, np.clip(desired_spectrum_dBm,-60,None))[0,1],2)), fontsize=14)
                 plt.tight_layout()
                 wandb.log({"ecav_modes": wandb.Image(fig)})
                 plt.close(fig)
@@ -657,12 +674,12 @@ if config['train']:
                 plt.xlabel('Freq (THz).', fontsize=16)
                 plt.ylabel('Power(dBm)', fontsize=16)
                 plt.grid()
-                plt.ylim(-90,15)
+                plt.ylim(-90,35)
                 plt.xlim(freq[220-180],freq[220+180])
                 plt.xticks(fontsize=16)
                 plt.yticks(fontsize=16)
                 plt.legend(fontsize=16, loc='lower center')
-                plt.title('Correlation '+str(np.round(np.corrcoef(ewg_dBm, np.clip(desired_spectrum_dBm,-60,20))[0,1],2)), fontsize=14)
+                plt.title('Correlation '+str(np.round(np.corrcoef(ewg_dBm, np.clip(desired_spectrum_dBm,-60,None))[0,1],2)), fontsize=14)
                 plt.tight_layout()
                 wandb.log({"ecav_freq": wandb.Image(fig)})
                 plt.close(fig)
