@@ -12,7 +12,7 @@
 #BSUB -R "rusage[mem=8GB]"
 #BSUB -M 8GB
 ### -- walltime limit --
-#BSUB -W 48:00
+#BSUB -W 72:00
 ### -- notification settings --
 #BSUB -B
 #BSUB -N

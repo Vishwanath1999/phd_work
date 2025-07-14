@@ -408,7 +408,7 @@ class RL_MRR_Env():
             reward_penalty = -10
             print('Primary Sidebands not formed')
             print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
-        elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
+        elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.3: #and self.step_cntr-self.init_steps_ <= self.Nt:
             terminal = True
             reward_penalty = -5
             print('Did not form soliton ...')
