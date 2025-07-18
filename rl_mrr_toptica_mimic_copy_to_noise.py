@@ -176,7 +176,6 @@ class RL_MRR_Env():
         self.t_sim_start = -t_ramp/2 + del_omega_perc[0]*t_ramp
         self.t_sim_step = self.t_sim[1] - self.t_sim[0]
 
-        self.pcav_ref = loadmat('ref_check.mat')['Pcomb'].T
         self.primary_sidebands = loadmat('primary_sidebands.mat')['spec'][0]
         # self.pcav_ref = loadmat('Pcomb_rl_allv2.mat')['Pcomb'].T
         self.seq_len = seq_len
@@ -514,7 +513,7 @@ fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
 desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
-desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30 +10
+desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30 
 desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
@@ -524,7 +523,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v2',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v4',
     'batch_size': 128,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,

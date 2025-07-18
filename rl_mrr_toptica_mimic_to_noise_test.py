@@ -177,7 +177,7 @@ class RL_MRR_Env():
         self.t_sim_start = -t_ramp/2 + del_omega_perc[0]*t_ramp
         self.t_sim_step = self.t_sim[1] - self.t_sim[0]
 
-        self.pcav_ref = loadmat('ref_check.mat')['Pcomb'].T
+        # self.pcav_ref = loadmat('ref_check.mat')['Pcomb'].T
         self.primary_sidebands = loadmat('primary_sidebands.mat')['spec'][0]
         # self.pcav_ref = loadmat('Pcomb_rl_allv2.mat')['Pcomb'].T
         self.seq_len = seq_len
@@ -467,9 +467,9 @@ class RL_MRR_Env():
             self.pcav_hist.pop(0)
 
         Ecav_dBm = 10*torch.log10(torch.abs(Ecav)**2)+30
-        Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=10)
+        Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None)
         desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
-        desired_spectrum_dBm = torch.clamp(desired_spectrum_dBm, min=-60, max=10)
+        desired_spectrum_dBm = torch.clamp(desired_spectrum_dBm, min=-60, max=None)
 
         
         # pop the first element of ecav_state and append new Ecav_dBm
@@ -506,7 +506,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='low')
+env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='high')
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -520,7 +520,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v3',
     'batch_size': 128,
     'dist': 'beta',
     'train':False,
@@ -570,7 +570,7 @@ while not done:
         obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
         obs = obs_ 
         score += reward
-        curr_pcav = np.sum(np.abs(acav_))
+        curr_pcav = np.sum(np.abs(acav_)**2)
         pcav_hist.append(curr_pcav)
         r_hist.append(reward)
         action_hist.append(action)
@@ -588,16 +588,16 @@ print('Test score %.2f' % score)
 import os
 
 # Create save directory if not exists
-save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
+save_dir = os.path.join('./results', agent.run_name, 'report_images_v2', env.thermal_effect)
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
 # %%
 # find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))
-plt.plot(pcav_hist, linewidth=1.5)
+plt.plot(1e3*np.array(pcav_hist), linewidth=1.5)
 plt.grid()
-plt.xlabel('Steps', fontsize=16)
-plt.ylabel('Pcav', fontsize=16)
+plt.xlabel('Tuning Steps', fontsize=16)
+plt.ylabel(r'$P_{cav}$ (mW)', fontsize=16)
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
@@ -605,12 +605,14 @@ plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_pcav_spec_all_ctrl.png'))
+    # save as svg also
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_pcav_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %%
 import matplotlib.ticker as ticker
 
 plt.figure(figsize=(14,4))
-plt.imshow(np.abs(1e3*np.array(acav_hist).T), aspect='auto', cmap='jet',\
+plt.imshow(1e3*np.abs(np.array(acav_hist).T)**2, aspect='auto', cmap='jet',\
             extent=[0, len(acav_hist), -1e12*env.tR.item()/2, 1e12*env.tR.item()/2])
 cbar = plt.colorbar()
 cbar.ax.tick_params(labelsize=16)
@@ -629,6 +631,7 @@ mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_spec_all_ctrl.svg'), format='svg')
 plt.show()
 
 # %%
@@ -651,6 +654,8 @@ mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_ifft_spec_all_ctrl.png'))
+    # save as svg also
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_ifft_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %%
 plt.figure(figsize=(14,4))
@@ -672,6 +677,8 @@ mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ewg_hist_spec_all_ctrl.png'))
+    # save as svg also
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ewg_hist_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %% Reward Plot
 plt.figure(figsize=(10, 6))
@@ -686,6 +693,8 @@ plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_rewards_spec_all_ctrl.png'))
+    # save as svg also
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_rewards_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %%
 desired_spectrum_dBm_ = np.clip(desired_spectrum_dBm, -60, 10)
@@ -716,6 +725,8 @@ mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.png'))
+    # save as svg also
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.svg'), format='svg')
 plt.show()
 
 plt.figure(figsize=(14,4))
@@ -736,6 +747,8 @@ mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.png'))
+    # save as svg also
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.svg'), format='svg')
 plt.show()
 # %%
 action_hist = np.array(action_hist)
@@ -756,6 +769,8 @@ mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_spec_all_ctrl.png'))
+    # save as svg also
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_spec_all_ctrl.svg'), format='svg')
 plt.show()
 
 # %%
@@ -771,6 +786,8 @@ mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_power_spec_all_ctrl.png'))
+    # save as svg also
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_power_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %%
 plt.figure(figsize=(10, 6))
@@ -785,6 +802,8 @@ mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
 if idx > int(0.5*env.max_steps):
     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_delta_theta_spec_all_ctrl.png'))
+    # save as svg also
+    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_delta_theta_spec_all_ctrl.svg'), format='svg')
 plt.show()
 '''
 # %%
@@ -800,7 +819,7 @@ def run_test_processes(run_id, save_dir):
         'alpha': 3e-4,
         'beta': 3e-4,
         'mem_size': int(1e6),
-        'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton',
+        'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v3',
         'batch_size': 128,
         'dist': 'beta',
         'train':False,
@@ -1043,4 +1062,4 @@ if __name__ == '__main__':
     # # # Example usage: plot all reward histories with a rolling window of 100
     plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
     plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-# '''
+'''
