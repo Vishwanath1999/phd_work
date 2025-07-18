@@ -7,6 +7,7 @@ from tqdm import tqdm
 from ipywidgets import interact, widgets
 import matplotlib.pyplot as plt
 import pandas as pd
+import matplotlib.ticker as ticker
 
 
 device = 'cpu'#torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -225,12 +226,13 @@ def Fdrive(it, A_in):
         Force = Force - 1j*A_in[ii]*torch.exp(1j*sigma)
     return Force + Noise(h_bar, omega1, int(len(mu)), device)
 
-def SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val):
+def SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val, delta_theta):
     # if it*num_probe/Nt > param['probe']:
     saved_data['u_probe'][param['probe'],:] = u0
     saved_data['detuning'][param['probe']] = del_omega_all[0][it]
     saved_data['t_sim'][param['probe']] = t_sim[it]
     saved_data['driving_force'][param['probe'],:] = Fdrive_val
+    saved_data['delta_theta'][param['probe']] = delta_theta
     param['probe'] += 1
     return param
 
@@ -341,7 +343,7 @@ def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton
         d_delta_theta_dt = -delta_theta / tau0 + xi * P_avg
         delta_theta += (1 * tR) * d_delta_theta_dt  # Euler step
         if it*num_probe/Nt > param['probe']:
-            param = SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val)
+            param = SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val, delta_theta)
     return saved_data
     # SaveData(saved_data,name)
 
@@ -446,6 +448,7 @@ def reset_saved_data():
     saved_data['kappa_ext'] = kext
     saved_data['kappa_0'] = k0
     saved_data['alpha'] = alpha
+    saved_data['delta_theta'] = torch.zeros(num_probe, device=device)  # Initialize delta_theta
     return saved_data
 
 # %%
@@ -514,12 +517,12 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate'):
 
     Awg = (wg+cav)/np.sqrt(np_dict['u_probe'].shape[1])
     Ewg = np.fft.fftshift(np.fft.fft(Awg, axis=1),axes=1)/np.sqrt(np_dict['u_probe'].shape[1])
-
+    Acav_abs = 1e3*np.abs(Acav.T)**2
     spec_dBm = 10 * np.log10(np.abs(Ewg)**2) + 30
     spec_dBm = np.clip(spec_dBm, -60, None)  # Clip to avoid extreme values
     if progress_bar:
         plt.figure(figsize=(14, 4))
-        plt.imshow(1e3*np.abs(Acav.T), aspect='auto', cmap='jet', extent=[0,len(Awg), -tR.item()*1e12/2, tR.item()*1e12/2], origin='lower')
+        plt.imshow(Acav_abs, aspect='auto', cmap='jet', extent=[0,len(Awg), -tR.item()*1e12/2, tR.item()*1e12/2], origin='lower')
         cbar = plt.colorbar()
         cbar.ax.tick_params(labelsize=16)
         cbar.set_label(r'Power $(mW)$', fontsize=16)
@@ -527,7 +530,7 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate'):
         formatter.set_scientific(True)
         formatter.set_powerlimits((-1, 1))
         plt.gca().xaxis.set_major_formatter(formatter)
-        plt.title('Field Amplitude Over Time (ton=' + ton + ')', fontsize=18, fontweight='bold')
+        plt.title(ton + ' themal effect', fontsize=18)
         plt.xlabel('Tuning Steps', fontsize=18)
         plt.ylabel(r'$t_R$ (ps)', fontsize=18)
         plt.tight_layout()
@@ -536,6 +539,33 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate'):
         plt.savefig('./GA_results/field_amplitude_ton_' + ton + '.png')
         plt.savefig('./GA_results/field_amplitude_ton_' + ton + '.svg', format='svg')
         plt.show()
+        plt.close()
+
+        plt.figure(figsize=(10,6))
+        plt.plot(np_dict['delta_theta'], linewidth=1.5)
+        plt.xlabel('Tuning Steps', fontsize=16)
+        plt.ylabel(r'$\delta _{\Theta}$', fontsize=16)
+        plt.xticks(fontsize=16)
+        plt.title(ton + ' thermal effect', fontsize=18)
+        plt.yticks(fontsize=16)
+        plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
+        plt.savefig('./GA_results/delta_theta_ton_' + ton + '.png')
+        plt.savefig('./GA_results/delta_theta_ton_' + ton + '.svg', format='svg')
+        plt.show()
+        plt.close()
+
+        # plot pcav
+        plt.figure(figsize=(10,6))
+        plt.plot(np.sum(Acav_abs, axis=0), linewidth=1.5)
+        plt.xlabel('Tuning Steps', fontsize=16)
+        plt.ylabel(r'$P_{cav}$ (mW)', fontsize=16)
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
+        plt.savefig('./GA_results/pcav_ton_' + ton + '.png')
+        plt.savefig('./GA_results/pcav_ton_' + ton + '.svg', format='svg')
+        plt.show()
+        plt.close()
     return spec_dBm[-1]
 # %%
 def fitness(spec):
@@ -560,7 +590,6 @@ def objective(X):
 # %%
 from GA_lib2 import geneticalgorithm
 import os
-import matplotlib.ticker as ticker
 
 plt.style.use('physrev.mplstyle')
 
@@ -605,7 +634,7 @@ if __name__ == "__main__":
     fine = best_var[0]
     dwell_steps = int(best_var[1])  # Convert to integer for dwell steps
     domega = initialize_del_omega_all(fine, dwell_steps, Nt.item(), del_omega_init, del_omega_end, rescale_and_quantize, device).cpu().numpy()
-    domega = np.cumsum(domega)*1e-9/(2*np.pi) + del_omega_init.cpu().numpy()*1e-9/(2*np.pi)  # Convert to GHz
+    domega = domega[0]/(2*np.pi*1e9)  # Convert to GHz for plotting
     plt.figure(figsize=(10,6))
     plt.plot(domega*1e-9, linewidth=1.5)
     plt.xlabel('Tuning Steps', fontsize=16)
@@ -636,7 +665,7 @@ if __name__ == "__main__":
         plt.yticks(fontsize=16)
         plt.ylim(-70, 30)
         plt.xlim(-180,180)
-        plt.legend(fontsize=14)
+        plt.legend(fontsize=16)
         plt.grid()
         plt.tight_layout()
         plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.png', dpi=300)
@@ -649,11 +678,11 @@ plt.style.use('physrev.mplstyle')
 # load the best solution from file
 # best_var = np.loadtxt('best_solution.txt', max_rows=1, delimiter=',')
 # best_fit = np.loadtxt('best_solution.txt', skiprows=1)# Extract the best parameters
-# ''' -0.88501114 168.78302798  0.64869831
-fine = -0.88501114
-dwell_steps = int(168.78302798)  # Convert to integer for dwell steps
-pump_power = 0.64869831  # Assuming the third parameter is the pump power
-# print(f"Running simulation with fine={rescale_and_quantize(fine)}, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)}")
+# ''' -0.97616016 101.92693437  -0.79674095
+fine = -0.97616016
+dwell_steps = int(101.92693437)  # Convert to integer for dwell steps
+pump_power = -0.79674095  # Assuming the third parameter is the pump power
+print(f"Running simulation with fine={rescale_and_quantize(fine)/(2*np.pi*1e9)} GHz, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)} W")
 # spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
 # plot the spectrum against the desired spectrum
 desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
@@ -661,7 +690,7 @@ desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
 desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)  # Clip to avoid extreme values
 
 for ton_case in ['weak', 'moderate', 'strong']:
-    print(f"Running simulation with ton='{ton_case}', fine={rescale_and_quantize(fine)}, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)}")
+    print(f"Running simulation with ton='{ton_case}', fine={rescale_and_quantize(fine)/(2*np.pi*1e9)} GHz, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)} W")
     spec = LLE(fine, dwell_steps, pump_power, progress_bar=True, ton=ton_case)
     
     plt.figure(figsize=(14, 4))
@@ -673,12 +702,16 @@ for ton_case in ['weak', 'moderate', 'strong']:
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
     plt.ylim(-70, 30)
-    plt.legend(fontsize=14)
+    plt.xlim(-180,180)
+    plt.legend(fontsize=14, loc='lower center')
     plt.grid()
     plt.tight_layout()
     plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.png')
     plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.svg', format='svg')
     plt.show()
+    # print the mse 
+    mse = fitness(spec)
+    print(f"Mean Squared Error (MSE) for {ton_case} thermal effect: {mse:.4f}")
 # %%
 # import the population fitness mat file
 # population_fitness = loadmat('./GA_results/population_fitness.mat')['fitness']

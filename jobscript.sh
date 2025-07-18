@@ -10,7 +10,7 @@
 ### -- Select the resources: 1 gpu in exclusive process mode --
 #BSUB -gpu "num=1:mode=exclusive_process"
 ### -- set walltime limit: hh:mm -- maximum 24 hours for GPU-queues right now
-#BSUB -W 24:00
+#BSUB -W 72:00
 ### -- request 30GB of system memory --
 #BSUB -R "rusage[mem=24GB]"
 ### -- set the email address --
@@ -33,7 +33,7 @@ module load cuda/12.4
 source my_env/bin/activate
 
 # Run your Python script within the virtual environment
-python rl_mrr_toptica_mimic_multi_pmp.py
+python rl_mrr_toptica_mimic_copy_to_noise.py
 
 # Deactivate virtual environment after execution (optional)
 deactivate
