@@ -536,8 +536,8 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate'):
         plt.tight_layout()
         plt.xticks(fontsize=16)
         plt.yticks(fontsize=16)
-        plt.savefig('./GA_results/field_amplitude_ton_' + ton + '.png')
-        plt.savefig('./GA_results/field_amplitude_ton_' + ton + '.svg', format='svg')
+        plt.savefig('./GA_results_corr_coeff/field_amplitude_ton_' + ton + '.png')
+        plt.savefig('./GA_results_corr_coeff/field_amplitude_ton_' + ton + '.svg', format='svg')
         plt.show()
         plt.close()
 
@@ -549,8 +549,8 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate'):
         plt.title(ton + ' thermal effect', fontsize=18)
         plt.yticks(fontsize=16)
         plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
-        plt.savefig('./GA_results/delta_theta_ton_' + ton + '.png')
-        plt.savefig('./GA_results/delta_theta_ton_' + ton + '.svg', format='svg')
+        plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.png')
+        plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.svg', format='svg')
         plt.show()
         plt.close()
 
@@ -562,8 +562,8 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate'):
         plt.xticks(fontsize=16)
         plt.yticks(fontsize=16)
         plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
-        plt.savefig('./GA_results/pcav_ton_' + ton + '.png')
-        plt.savefig('./GA_results/pcav_ton_' + ton + '.svg', format='svg')
+        plt.savefig('./GA_results_corr_coeff/pcav_ton_' + ton + '.png')
+        plt.savefig('./GA_results_corr_coeff/pcav_ton_' + ton + '.svg', format='svg')
         plt.show()
         plt.close()
     return spec_dBm[-1]
@@ -578,6 +578,17 @@ def fitness(spec):
     mse = np.mean((spec - desired_spectrum_dBm)**2)
     return mse
 
+# write a fitness function using correlation coefficient
+def fitness_correlation(spec):
+    """
+    Calculate the fitness of the spectrum using correlation coefficient.
+    """
+    desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+    desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+    desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)  # Clip to avoid extreme values
+    correlation = np.corrcoef(spec, desired_spectrum_dBm)[0, 1]
+    return 4*(1-correlation)
+
 def objective(X):
     """
     Objective function for the genetic algorithm.
@@ -586,7 +597,7 @@ def objective(X):
     fine = X[0]  # GA passes an array
     dwell_steps = int(X[1])  # Convert to integer for dwell steps
     spec = LLE(fine, dwell_steps, X[2])
-    return fitness(spec)
+    return fitness_correlation(spec)
 # %%
 from GA_lib2 import geneticalgorithm
 import os
@@ -594,7 +605,7 @@ import os
 plt.style.use('physrev.mplstyle')
 
 algorithm_param = {
-    'max_num_iteration': 20,
+    'max_num_iteration': 40,
     'population_size': 40,
     'mutation_probability': 0.25,
     'elit_ratio': 0.01,
@@ -616,9 +627,9 @@ if __name__ == "__main__":
         progress_bar=True,
         algorithm_parameters=algorithm_param,
         # random_seed=seed,
-        fitness_threshold=0.2,  # Set a fitness threshold for early stopping
+        fitness_threshold=None,  # Set a fitness threshold for early stopping
     )
-    save_dir = os.path.join(os.getcwd(), 'GA_results')
+    save_dir = os.path.join(os.getcwd(), 'GA_results_corr_coeff')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     best_var, best_fit = model.run(save_dir)
@@ -658,7 +669,7 @@ if __name__ == "__main__":
         plt.figure(figsize=(14, 4))
         plt.vlines(np.arange(-220,221,1),-60*np.ones(441), spec, label='Optimized Spectrum', color='blue')
         plt.vlines(np.arange(-220,221,1),-60*np.ones(441), desired_spectrum_dBm, label='Desired Spectrum', color='red', alpha=0.5)
-        plt.title(f'Optimized Spectrum vs Desired Spectrum (ton={ton_case})', fontsize=18, fontweight='bold')
+        # plt.title(ton_case + ' thermal effect', fontsize=18, fontweight='bold')
         plt.xlabel('Mode no.', fontsize=16)
         plt.ylabel('Power (dBm)', fontsize=16)
         plt.xticks(fontsize=16)
@@ -668,8 +679,8 @@ if __name__ == "__main__":
         plt.legend(fontsize=16)
         plt.grid()
         plt.tight_layout()
-        plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.png', dpi=300)
-        plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.svg', dpi=300, format='svg')
+        plt.savefig(f'./GA_results_corr_coeff/optimized_spectrum_{ton_case}.png', dpi=300)
+        plt.savefig(f'./GA_results_corr_coeff/optimized_spectrum_{ton_case}.svg', dpi=300, format='svg')
         plt.show()
 # %%
 plt.style.use('physrev.mplstyle')
@@ -678,10 +689,10 @@ plt.style.use('physrev.mplstyle')
 # load the best solution from file
 # best_var = np.loadtxt('best_solution.txt', max_rows=1, delimiter=',')
 # best_fit = np.loadtxt('best_solution.txt', skiprows=1)# Extract the best parameters
-# ''' -0.97616016 101.92693437  -0.79674095
-fine = -0.97616016
+# ''' -0.97732776 101.58759916  -0.70879411
+fine = -0.97732776
 dwell_steps = int(101.92693437)  # Convert to integer for dwell steps
-pump_power = -0.79674095  # Assuming the third parameter is the pump power
+pump_power = -0.70879411  # Assuming the third parameter is the pump power
 print(f"Running simulation with fine={rescale_and_quantize(fine)/(2*np.pi*1e9)} GHz, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)} W")
 # spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
 # plot the spectrum against the desired spectrum
@@ -706,8 +717,8 @@ for ton_case in ['weak', 'moderate', 'strong']:
     plt.legend(fontsize=14, loc='lower center')
     plt.grid()
     plt.tight_layout()
-    plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.png')
-    plt.savefig(f'./GA_results/optimized_spectrum_{ton_case}.svg', format='svg')
+    plt.savefig(f'./GA_results_corr_coeff/optimized_spectrum_{ton_case}.png')
+    plt.savefig(f'./GA_results_corr_coeff/optimized_spectrum_{ton_case}.svg', format='svg')
     plt.show()
     # print the mse 
     mse = fitness(spec)

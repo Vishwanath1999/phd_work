@@ -5,14 +5,14 @@
 ### -- set the job Name --
 #BSUB -J rl_mrr_ton
 ### -- ask for number of cores --
-#BSUB -n 4
+#BSUB -n 10
 
 ### -- Select the resources: 1 gpu in exclusive process mode --
 #BSUB -gpu "num=1:mode=exclusive_process"
 ### -- set walltime limit: hh:mm -- maximum 24 hours for GPU-queues right now
 #BSUB -W 72:00
 ### -- request 30GB of system memory --
-#BSUB -R "rusage[mem=24GB]"
+#BSUB -R "rusage[mem=30GB]"
 ### -- set the email address --
 #BSUB -u viswa@dtu.dk
 ### -- send notification at start --
@@ -33,7 +33,7 @@ module load cuda/12.4
 source my_env/bin/activate
 
 # Run your Python script within the virtual environment
-python rl_mrr_toptica_mimic_copy_to_noise.py
+python rl_mrr_toptica_mimic_to_phase_noise.py
 
 # Deactivate virtual environment after execution (optional)
 deactivate
