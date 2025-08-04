@@ -523,7 +523,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v4',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v5',
     'batch_size': 128,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
@@ -534,7 +534,7 @@ config = {
     }
 # %%
 
-from sac import SACAgent
+from rl_codes.sac import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
                 eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'])
@@ -654,6 +654,25 @@ if config['train']:
 
         print('episode: ', i, 'score: %.2f' % score, 'average score: %.2f' % avg_score,'best score: %.2f' % best_score, 'n_steps:', n_steps, 'terminal:', terminal)
 # '''
+# %%
+import matplotlib.pyplot as plt
+plt.style.use('physics.mplstyle')
+# Plot episode scores
+if config['train']:
+    plt.figure(figsize=(10, 6))
+    plt.plot(np.array(scores)/(4e3), color='blue', linewidth=1.5)
+    plt.xlabel('Episode no.', fontsize=16)
+    plt.ylabel('Score', fontsize=16)
+    plt.title('Episode Scores Normalized by length', fontsize=16)
+    plt.grid(which='both', linestyle='--', linewidth=0.5)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.tight_layout()
+    plt.savefig(agent.run_name+'_scores.png')
+    # save svg
+    plt.savefig(agent.run_name+'_scores.svg', format='svg')
+    plt.show()
+    # wandb.log({"episode_scores": wandb.Histogram(scores)})
 # %%
 # state, acav, ecav = env.reset(10000)
 # den = env.p_max - env.p_min

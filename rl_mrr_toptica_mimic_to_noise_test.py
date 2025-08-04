@@ -506,7 +506,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='high')
+env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='low')
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -520,7 +520,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v3',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v4',
     'batch_size': 128,
     'dist': 'beta',
     'train':False,
@@ -531,7 +531,7 @@ config = {
     }
 # %%
 
-from sac import SACAgent
+from rl_codes.sac import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
                 eval_mode=True, fc_dim=config['fc_dim'], use_per=config['use_per'])
@@ -588,7 +588,7 @@ print('Test score %.2f' % score)
 import os
 
 # Create save directory if not exists
-save_dir = os.path.join('./results', agent.run_name, 'report_images_v2', env.thermal_effect)
+save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
 # %%
@@ -757,7 +757,7 @@ det_start = env.del_omega_init.item()/(2*np.pi)
 detuning_array = det_start + np.cumsum(del_detuning)
 detuning_array = np.clip(detuning_array, env.del_omega_end.item()/(2*np.pi), env.del_omega_init.item()/(2*np.pi))
 plt.figure(figsize=(10, 6))
-plt.plot(detuning_array*1e-9)
+plt.plot(detuning_array*1e-9, linewidth=1.5)
 plt.xlabel('Tuning Steps', fontsize=18)
 plt.ylabel('Pump detuning (GHz)', fontsize=18)
 plt.grid()
@@ -775,7 +775,7 @@ plt.show()
 
 # %%
 plt.figure(figsize=(10, 6))
-plt.plot(env.rescale_power(action_hist[:,0]))
+plt.plot(env.rescale_power(action_hist[:,0]), linewidth=1.5)
 plt.xlabel('Tuning Steps', fontsize=18)
 plt.ylabel('Pump Power (mW)', fontsize=18)
 plt.grid()
