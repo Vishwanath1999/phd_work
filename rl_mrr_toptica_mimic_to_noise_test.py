@@ -408,11 +408,11 @@ class RL_MRR_Env():
             reward_penalty = -10
             print('Primary Sidebands not formed')
             print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
-        elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.3: #and self.step_cntr-self.init_steps_ <= self.Nt:
-            terminal = True
-            reward_penalty = -5
-            print('Did not form soliton ...')
-            print('Spectral Corr:', corr)
+        # elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.3: #and self.step_cntr-self.init_steps_ <= self.Nt:
+        #     terminal = True
+        #     reward_penalty = -5
+        #     print('Did not form soliton ...')
+        #     print('Spectral Corr:', corr)
         # elif self.step_cntr > self.Nt and achieved == False:
         #     terminal = True
         #     reward_penalty = -5
@@ -436,7 +436,7 @@ class RL_MRR_Env():
         det_delta = self.rescale_and_quantize(action[1])*(2*np.pi)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
-            del_omega = self.current_del_omega + det_delta + self.delta_theta
+            del_omega = self.current_del_omega + det_delta + self.delta_theta/(self.tR*2*torch.pi)
 
             del_omega = torch.clamp(del_omega, min=self.del_omega_stop, max=self.del_omega_init)
 
@@ -506,7 +506,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='low')
+env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='moderate')
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -588,7 +588,7 @@ print('Test score %.2f' % score)
 import os
 
 # Create save directory if not exists
-save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
+save_dir = os.path.join('./results', agent.run_name, 'un_norm', env.thermal_effect)
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
 # %%
@@ -603,10 +603,10 @@ plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
 plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_pcav_spec_all_ctrl.png'))
-    # save as svg also
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_pcav_spec_all_ctrl.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_pcav_spec_all_ctrl.png'))
+# save as svg also
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_pcav_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %%
 import matplotlib.ticker as ticker
@@ -629,9 +629,9 @@ plt.ylabel(r'$t_R (ps)$', fontsize=14)
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_spec_all_ctrl.png'))
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_spec_all_ctrl.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_spec_all_ctrl.png'))
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_spec_all_ctrl.svg'), format='svg')
 plt.show()
 
 # %%
@@ -652,10 +652,10 @@ plt.yticks(fontsize=14)
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_ifft_spec_all_ctrl.png'))
-    # save as svg also
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_ifft_spec_all_ctrl.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_ifft_spec_all_ctrl.png'))
+# save as svg also
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_hist_ifft_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %%
 plt.figure(figsize=(14,4))
@@ -675,10 +675,10 @@ plt.yticks(fontsize=14)
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ewg_hist_spec_all_ctrl.png'))
-    # save as svg also
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ewg_hist_spec_all_ctrl.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ewg_hist_spec_all_ctrl.png'))
+# save as svg also
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ewg_hist_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %% Reward Plot
 plt.figure(figsize=(10, 6))
@@ -691,10 +691,10 @@ plt.grid()
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 plt.tight_layout()
 mod_pow = str(env.power[0]).replace('.','_')
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_rewards_spec_all_ctrl.png'))
-    # save as svg also
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_rewards_spec_all_ctrl.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_rewards_spec_all_ctrl.png'))
+# save as svg also
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_rewards_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %%
 desired_spectrum_dBm_ = np.clip(desired_spectrum_dBm, -60, 10)
@@ -723,10 +723,10 @@ plt.legend(fontsize=18,loc='lower center')
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.png'))
-    # save as svg also
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.png'))
+# save as svg also
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.svg'), format='svg')
 plt.show()
 
 plt.figure(figsize=(14,4))
@@ -745,10 +745,10 @@ plt.legend(fontsize=18, loc='lower center')
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.png'))
-    # save as svg also
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.png'))
+# save as svg also
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.svg'), format='svg')
 plt.show()
 # %%
 action_hist = np.array(action_hist)
@@ -767,12 +767,52 @@ plt.gca().xaxis.set_major_formatter(formatter)
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_spec_all_ctrl.png'))
-    # save as svg also
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_spec_all_ctrl.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_spec_all_ctrl.png'))
+# save as svg also
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_spec_all_ctrl.svg'), format='svg')
 plt.show()
+# %%
+import fractions
 
+# Convert to units of kappa
+kappa = env.un_norm_kappa.item()/(2*np.pi)
+detuning_kappa = detuning_array / kappa
+
+plt.figure(figsize=(10, 6))
+plt.plot(detuning_kappa, linewidth=1.5)
+plt.xlabel('Tuning Steps', fontsize=18)
+plt.ylabel(r'Pump detuning ($\kappa$ units)', fontsize=18)
+plt.grid()
+plt.xticks(fontsize=18)
+plt.yticks(fontsize=18)
+
+# Set y-ticks at reasonable intervals (e.g., 0.5)
+ymin, ymax = plt.ylim()
+yticks = np.arange(np.floor(ymin*2)/2, np.ceil(ymax*2)/2 + 0.01, 0.5)
+
+def frac_label(val):
+    frac = fractions.Fraction(val).limit_denominator(8)
+    if frac.numerator == 0:
+        return r"$0$"
+    elif frac.denominator == 1:
+        return rf"${frac.numerator}\,\kappa$"
+    elif frac.numerator == 1:
+        return rf"$\frac{{1}}{{{frac.denominator}}}\,\kappa$"
+    elif frac.numerator == -1:
+        return rf"$-\frac{{1}}{{{frac.denominator}}}\,\kappa$"
+    else:
+        return rf"$\frac{{{frac.numerator}}}{{{frac.denominator}}}\,\kappa$"
+
+ytick_labels = [frac_label(y) for y in yticks]
+plt.yticks(yticks, ytick_labels, fontsize=18)
+
+plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
+mod_pow = str(env.power[0]).replace('.','_')
+plt.tight_layout()
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_spec_all_ctrl_kappa.png'))
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_spec_all_ctrl_kappa.svg'), format='svg')
+plt.show()
 # %%
 plt.figure(figsize=(10, 6))
 plt.plot(env.rescale_power(action_hist[:,0]), linewidth=1.5)
@@ -784,26 +824,26 @@ plt.yticks(fontsize=18)
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_power_spec_all_ctrl.png'))
-    # save as svg also
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_power_spec_all_ctrl.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_power_spec_all_ctrl.png'))
+# save as svg also
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_actions_power_spec_all_ctrl.svg'), format='svg')
 plt.show()
 # %%
 plt.figure(figsize=(10, 6))
-plt.plot(np.array(delta_theta), linewidth=1.5)
+plt.plot(np.array(delta_theta)/(2*np.pi*env.tR.item()), linewidth=1.5)
 plt.xlabel('Tuning Steps', fontsize=18)
-plt.ylabel(r'$\delta _{\Theta}$', fontsize=18)
+plt.ylabel(r'$\f _{\Theta}$', fontsize=18)
 plt.grid()
 plt.xticks(fontsize=18)
 plt.yticks(fontsize=18)
 plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
 mod_pow = str(env.power[0]).replace('.','_')
 plt.tight_layout()
-if idx > int(0.5*env.max_steps):
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_delta_theta_spec_all_ctrl.png'))
-    # save as svg also
-    plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_delta_theta_spec_all_ctrl.svg'), format='svg')
+# if idx > int(0.5*env.max_steps):
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_delta_theta_spec_all_ctrl.png'))
+# save as svg also
+plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_delta_theta_spec_all_ctrl.svg'), format='svg')
 plt.show()
 '''
 # %%

@@ -132,12 +132,13 @@ class PrioritizedReplayBuffer:
             self.priorities[idx] = max(self.priorities[idx], self.epsilon)
 
 class Actor(nn.Module):
-    def __init__(self, input_dim, lr=3e-4, fc_dim=128, output_dim=1, max_action=1, dist='normal', name='sac',chkpt_dir='./tmp/sac'):
+    def __init__(self, input_dim, lr=3e-4, fc_dim=128, output_dim=1, max_action=1, dist='normal', name='sac',chkpt_dir='./tmp/sac', bidir=False):
         super(Actor, self).__init__()
         self.max_action = max_action
         self.dist = dist
-        self.seq_encoder = nn.GRU(input_dim[1], fc_dim, batch_first=True)
-        self.fc1 = nn.Linear(fc_dim, fc_dim)
+        self.bidir = bidir
+        self.seq_encoder = nn.GRU(input_dim[1], fc_dim, batch_first=True, bidirectional=bidir)
+        self.fc1 = nn.Linear((1+bidir)*fc_dim, fc_dim)
         self.mu_layer = nn.Linear(fc_dim, output_dim)
         self.log_std_layer = nn.Linear(fc_dim, output_dim)
         self.log_std_min = -20
@@ -152,7 +153,12 @@ class Actor(nn.Module):
 
     def forward(self, state):
         _, h = self.seq_encoder(state)
-        x = F.relu(self.fc1(h[0]))
+        if self.bidir:
+            # If bidirectional, concatenate the last hidden states from both directions
+            x = T.cat((h[0], h[1]), dim=1)
+            x = F.relu(self.fc1(x))
+        else:
+            x = F.relu(self.fc1(h[0]))
         if self.dist == 'normal':
             mu = self.mu_layer(x)
             log_std = self.log_std_layer(x)
@@ -227,11 +233,12 @@ class Actor(nn.Module):
         return scripted
 
 class CriticNetwork(nn.Module):
-    def __init__(self, input_dim, n_actions, lr=3e-4, fc_dim=128, name='sac', chkpt_dir='./tmp/sac'):
+    def __init__(self, input_dim, n_actions, lr=3e-4, fc_dim=128, name='sac', chkpt_dir='./tmp/sac', bidir=False):
         super(CriticNetwork, self).__init__()
         
-        self.seq_encoder = nn.GRU(input_dim[1], fc_dim, batch_first=True)
-        self.fc1 = nn.Linear(fc_dim+n_actions, fc_dim)
+        self.bidir = bidir
+        self.seq_encoder = nn.GRU(input_dim[1], fc_dim, batch_first=True, bidirectional=bidir)
+        self.fc1 = nn.Linear((1+bidir)*fc_dim+n_actions, fc_dim)
         self.q_layer = nn.Linear(fc_dim, 1)
 
         self.chkpt_dir = chkpt_dir
@@ -243,7 +250,10 @@ class CriticNetwork(nn.Module):
 
     def forward(self, state, action):
         _, h = self.seq_encoder(state)
-        x = T.cat([h[0], action], dim=1)
+        if self.bidir:
+            x = T.cat((h[0], h[1], action), dim=1)
+        else:
+            x = T.cat([h[0], action], dim=1)
         x = F.relu(self.fc1(x))
         q_value = self.q_layer(x)
         return q_value
@@ -260,7 +270,7 @@ class CriticNetwork(nn.Module):
 
 class SACAgent:
     def __init__(self, input_dim, n_actions, run_name, alpha=3e-4, beta=3e-4, gamma=0.99, tau=0.005, 
-                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False, fc_dim=128, use_per=False):
+                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False, fc_dim=128, use_per=False, bidir=False):
         self.input_dim = input_dim
         self.n_actions = n_actions
         self.run_name = run_name
@@ -281,12 +291,12 @@ class SACAgent:
             self.beta_steps = int(2e5)
             self.beta_inc = (self.beta_end - self.beta_start) / self.beta_steps
 
-        self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, fc_dim=fc_dim, max_action=max_action, dist=dist,name=run_name+'_actor')
-        self.critic_1 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_critic_1')
-        self.critic_2 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_critic_2')
+        self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, fc_dim=fc_dim, max_action=max_action, dist=dist,name=run_name+'_actor', bidir=bidir)
+        self.critic_1 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_critic_1', bidir=bidir)
+        self.critic_2 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_critic_2', bidir=bidir)
         
-        self.target_critic_1 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_target_critic_1')
-        self.target_critic_2 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_target_critic_2')
+        self.target_critic_1 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_target_critic_1', bidir=bidir)
+        self.target_critic_2 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_target_critic_2', bidir=bidir)
 
         self.update_network_parameters(tau=1)
         self.target_ent_coef = -np.prod(n_actions)

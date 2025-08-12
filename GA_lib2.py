@@ -166,6 +166,7 @@ class geneticalgorithm:
         plt.ylabel('Fitness', fontsize=16)
         plt.title('Population Fitness per Generation', fontsize=18, fontweight='bold')
         plt.legend()
+        plt.yscale('log')
         plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
         plt.tight_layout()
         fig_name = 'population_fitness_curve.png'

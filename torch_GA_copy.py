@@ -334,7 +334,7 @@ def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton
         raise ValueError("Invalid value for 'ton'. Choose from 'weak', 'moderate', or 'strong'.")
 
     for it in iterator:
-        del_omega_all[0, it] += delta_theta
+        del_omega_all[0, it] += delta_theta/(tR)  # Update detuning with thermal detuning
         Fdrive_val = Fdrive(it, A_in)
         u0 = ssfm_step(u0, it, alpha, Dint_shift, del_omega_all, tR, gamma, L, 
                        max_iter, tol, dt, kext, Fdrive_val, A_prop)
@@ -507,7 +507,7 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate'):
         Ein[ii,int(mu0+ind_pmp[ii])] = torch.sqrt(pump_power)*len(mu)
         Ain[ii] = torch.fft.ifft(torch.fft.fftshift(Ein[ii],dim=0),dim=0)*torch.exp(-1j*phi_pmp[ii])
     # Run the main solver with the updated del_omega_all
-    saved_data = MainSolver(Nt, saved_data, u0, del_omega_all, Ain, show_progress=progress_bar)
+    saved_data = MainSolver(Nt, saved_data, u0, del_omega_all, Ain, show_progress=progress_bar, ton=ton)
     np_dict = tensor_to_dict(saved_data)
     Acav = np.sqrt(np_dict['alpha']/2)* np_dict['u_probe']*np.exp(1j*np.pi)/np.sqrt(np_dict['u_probe'].shape[1])
     Ecav = np.fft.fftshift(np.fft.fft(Acav, axis=1),axes=1)/np.sqrt(np_dict['u_probe'].shape[1])
