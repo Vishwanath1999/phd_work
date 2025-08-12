@@ -442,7 +442,7 @@ class RL_MRR_Env():
         det_delta = self.rescale_and_quantize(action[1])*(2*np.pi)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
-            del_omega = self.current_del_omega + det_delta + self.delta_theta
+            del_omega = self.current_del_omega + det_delta + self.delta_theta#/(self.tR*2*torch.pi)
 
             del_omega = torch.clamp(del_omega, min=self.del_omega_stop, max=self.del_omega_init)
 
@@ -522,26 +522,27 @@ desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 config = {
-    'input_dim': [env.seq_len, 441+2],
+    'input_dim': [env.seq_len, 300+2],
     'n_actions': 2,
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_to_phase_noise',
-    'batch_size': 128,
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_to_phase_noisev2',
+    'batch_size': 256,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
     'p_max': env.p_max,
     'p_min': env.p_min,
-    'fc_dim':256,
-    'use_per':True
+    'fc_dim':128,
+    'use_per':True,
+    'bidirectional': True, # if True, use bidirectional GRU
     }
 # %%
 
 from rl_codes.sac import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-                eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'])
+                eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'], bidir=config['bidirectional'])
 print(agent.actor)
 print(agent.critic_1)
 
@@ -569,7 +570,7 @@ if config['train']:
         n_steps = 0
         state, acav, ecav = env.reset(10000)
         logs['pump power'] = env.power
-        obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
+        obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
         pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=i, desc='Episode %d' % i)
         while not done:
             action = agent.choose_action(obs)
@@ -580,7 +581,7 @@ if config['train']:
             logs['detuning (MHz)'] = env.rescale_and_quantize(action[1])*1e-6
             logs['reward'] = reward  
             
-            ecav_obs = np.concatenate((ecav_[-1]/10, env.power/den, env.rescale_and_quantize(action[1:])*1e-6), axis=0)
+            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, env.rescale_and_quantize(action[1:])*1e-6), axis=0)
             obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
             obs = obs_   
             agent.remember(obs, action, reward, obs_, terminal)

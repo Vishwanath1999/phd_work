@@ -438,7 +438,7 @@ class RL_MRR_Env():
         det_delta = self.rescale_and_quantize(action[1])*(2*np.pi)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
-            del_omega = self.current_del_omega + det_delta + self.delta_theta
+            del_omega = self.current_del_omega + det_delta + self.delta_theta/(self.tR)
 
             del_omega = torch.clamp(del_omega, min=self.del_omega_stop, max=self.del_omega_init)
 
@@ -508,7 +508,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='moderate')
+env = RL_MRR_Env(seq_len=100, p_max=0.18, p_min=0.05, ctrl_freq=100, thermal_effect='moderate')
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -523,7 +523,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v5',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm',
     'batch_size': 128,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
