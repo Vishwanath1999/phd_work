@@ -152,13 +152,9 @@ class Actor(nn.Module):
         self.to(self.device)
 
     def forward(self, state):
-        _, h = self.seq_encoder(state)
-        if self.bidir:
-            # If bidirectional, concatenate the last hidden states from both directions
-            x = T.cat((h[0], h[1]), dim=1)
-            x = F.relu(self.fc1(x))
-        else:
-            x = F.relu(self.fc1(h[0]))
+        out, _ = self.seq_encoder(state)
+        x = out[:,-1,:]  # Take the last output of the GRU
+        x = F.relu(self.fc1(x))
         if self.dist == 'normal':
             mu = self.mu_layer(x)
             log_std = self.log_std_layer(x)
@@ -249,11 +245,9 @@ class CriticNetwork(nn.Module):
         self.to(self.device)
 
     def forward(self, state, action):
-        _, h = self.seq_encoder(state)
-        if self.bidir:
-            x = T.cat((h[0], h[1], action), dim=1)
-        else:
-            x = T.cat([h[0], action], dim=1)
+        out, _ = self.seq_encoder(state)
+        x = out[:,-1,:]  # Take the last output of the GRU
+        x = T.cat([x, action], dim=1)  # Concatenate action
         x = F.relu(self.fc1(x))
         q_value = self.q_layer(x)
         return q_value
@@ -299,7 +293,7 @@ class SACAgent:
         self.target_critic_2 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_target_critic_2', bidir=bidir)
 
         self.update_network_parameters(tau=1)
-        self.target_ent_coef = -n_actions
+        self.target_ent_coef = -float(n_actions)
         self.log_ent_coef = T.log(T.ones(1,device=self.actor.device)).requires_grad_(True)
         self.ent_coef_optimizer = optim.Adam([self.log_ent_coef], lr=alpha)
 
@@ -353,8 +347,8 @@ class SACAgent:
         q2 = self.critic_2(state, action).view(-1)
         critic_loss = 0.5* (T.mean(weights*(q1 - target_value)**2, dim=0) + T.mean(weights*(q2 - target_value)**2, dim=0))
         critic_loss.backward()
-        nn.utils.clip_grad_norm_(self.critic_1.parameters(), 0.5)
-        nn.utils.clip_grad_norm_(self.critic_2.parameters(), 0.5)
+        nn.utils.clip_grad_norm_(self.critic_1.parameters(), 1)
+        nn.utils.clip_grad_norm_(self.critic_2.parameters(), 1)
         self.critic_1.optimizer.step()
         self.critic_2.optimizer.step()
 
@@ -366,7 +360,7 @@ class SACAgent:
         actor_loss = (ent_coef * log_probs - critic_value).mean()
         self.actor.optimizer.zero_grad()
         actor_loss.backward()
-        nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
+        nn.utils.clip_grad_norm_(self.actor.parameters(), 1)
         self.actor.optimizer.step()
 
         # Update Entropy Coefficient
@@ -380,7 +374,7 @@ class SACAgent:
 
         # Update priorities in PER
         if self.use_per:
-            td_errors = T.abs(q1.view(-1) - target_value)#.clamp(-1,1)
+            td_errors = T.abs(q1.view(-1) - target_value).clamp(None,10)
             self.memory.update_priorities(indices, td_errors.cpu().detach().numpy())
             
             # Update beta for PER
