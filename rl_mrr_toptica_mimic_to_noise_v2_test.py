@@ -20,7 +20,10 @@ H_BAR = cts.hbar
 # %%
 class RL_MRR_Env():
 
-    def __init__(self, seq_len=50, p_max=0.3, p_min=0.1, ctrl_freq=100, thermal_effect='moderate'):
+    def __init__(self, seq_len=50, p_max=0.3, p_min=0.1, ctrl_freq=100, thermal_effect='moderate', 
+                 delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4):
+        
+
         super(RL_MRR_Env, self).__init__()
 
         self.step_cntr = 0
@@ -92,6 +95,7 @@ class RL_MRR_Env():
 
         self.thermal_effect = thermal_effect
 
+        self.tau0 = 100e-9
         if thermal_effect == 'low':
             self.xi = -1.2e4
         elif thermal_effect == 'moderate':
@@ -100,22 +104,21 @@ class RL_MRR_Env():
             self.xi = -1.2e5
         else:
             raise ValueError("Invalid thermal effect. Choose from 'low', 'moderate', or 'high'.")
-
-        self.tau0 = 100e-9
+        
         self.delta_theta = torch.tensor(0.0, device=DEVICE, dtype=torch.float64)
 
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
         # del_omega_init = self.sim_tensor['domega_init']
-        del_omega_init = 2*self.un_norm_kappa
+        del_omega_init = 3*self.un_norm_kappa
         self.del_omega_init = del_omega_init
         self.current_del_omega = del_omega_init
         # del_omega_end = self.sim_tensor['domega_end']
-        del_omega_end = -10*self.un_norm_kappa
+        del_omega_end = -7*self.un_norm_kappa
         self.del_omega_end = del_omega_end
 
         # del_omega_stop = self.sim_tensor['domega_stop']
-        del_omega_stop = -12*self.un_norm_kappa
+        del_omega_stop = -10*self.un_norm_kappa
         self.del_omega_stop = del_omega_stop
         ind_sweep = self.sim_tensor['ind_pump_sweep'] 
         t_end = self.sim_tensor['Tscan']
@@ -177,13 +180,15 @@ class RL_MRR_Env():
         self.t_sim_start = -t_ramp/2 + del_omega_perc[0]*t_ramp
         self.t_sim_step = self.t_sim[1] - self.t_sim[0]
 
-        # self.pcav_ref = loadmat('ref_check.mat')['Pcomb'].T
         self.primary_sidebands = loadmat('primary_sidebands.mat')['spec'][0]
         # self.pcav_ref = loadmat('Pcomb_rl_allv2.mat')['Pcomb'].T
         self.seq_len = seq_len
         self.p_max = p_max
         self.p_min = p_min
         self.ctrl_freq = ctrl_freq
+        self.delta_omega_min = delta_omega_min  
+        self.delta_omega_max = delta_omega_max
+        self.delta_omega_step = delta_omega_step
 
     
     @staticmethod
@@ -324,20 +329,24 @@ class RL_MRR_Env():
             mul_factor = np.random.choice([1, -1, 0], p=[1/3, 1/3, 1/3])
             del_omega = self.current_del_omega + mul_factor*(1/self.Nt)*(self.del_omega_end - self.del_omega_init)
 
-            Fdrive_val = self.Fdrive(del_omega, self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain)
-            u0 = self.ssfm_step(self.state, self.step_cntr, self.alpha, self.Dint_shift, del_omega, self.tR, self.gamma, \
+            Fdrive_val = self.Fdrive(del_omega + self.delta_theta/self.tR, self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain)
+            u0 = self.ssfm_step(self.state, self.step_cntr, self.alpha, self.Dint_shift, del_omega + self.delta_theta/self.tR, self.tR, self.gamma, \
                                 self.L, 10, 1e-3, 1, self.kext, Fdrive_val)
             self.step_cntr += 1
             self.state = u0
             P_avg = torch.mean(torch.abs(u0)**2)  # Compute average power
             d_delta_theta_dt = -self.delta_theta / self.tau0 + self.xi * P_avg
             self.delta_theta += (1 * self.tR) * d_delta_theta_dt  # Euler step
-            self.current_del_omega = del_omega + self.delta_theta
+            self.current_del_omega = del_omega 
 
-            Acav = torch.sqrt(self.alpha/2)*self.state*np.exp(1j*torch.pi)/len(self.mu)
-            Ecav = torch.fft.fftshift(torch.fft.fft(Acav))
-            Ecav_dBm = 10*torch.log10(torch.abs(Ecav)**2)+30
-            Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=10)
+            Acav = torch.sqrt(self.alpha/2)*self.state*np.exp(1j*torch.pi)/np.sqrt(len(self.mu))
+            Ecav = torch.fft.fftshift(torch.fft.fft(Acav))/np.sqrt(len(self.mu))
+            cav = Fdrive_val*torch.sqrt(1-self.kext)
+            wg = torch.sqrt(self.kext)*u0*np.exp(1j*np.pi)
+            Awg = (wg + cav)/np.sqrt(len(self.mu))
+            Ewg = torch.fft.fftshift(torch.fft.fft(Awg))/np.sqrt(len(self.mu))
+            Ecav_dBm = 10*torch.log10(torch.abs(Ewg)**2)+30
+            Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None)
             Acav_np = Acav.cpu().numpy()
             curr_pcav = np.sum(np.abs(Acav_np))
             self.pcav_hist.append(curr_pcav)
@@ -350,6 +359,8 @@ class RL_MRR_Env():
         self.ecav_state = np.array(self.ecav_state)
 
         self.env_p_hist = []
+
+        self.det_out_cntr = 0
         
         print('Reset...')
         return self.state, Acav_np, self.ecav_state
@@ -403,21 +414,30 @@ class RL_MRR_Env():
         if self.step_cntr<45000 and self.primary_sidebands_flag==False:
             self.primary_sidebands_flag = np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1]<0.5
         
-        if self.step_cntr == 45000 and self.primary_sidebands_flag == False:
-            terminal = True
-            reward_penalty = -10
-            print('Primary Sidebands not formed')
-            print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
-        # elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.3: #and self.step_cntr-self.init_steps_ <= self.Nt:
+        # if self.step_cntr == 45000 and self.primary_sidebands_flag == False:
         #     terminal = True
-        #     reward_penalty = -5
-        #     print('Did not form soliton ...')
-        #     print('Spectral Corr:', corr)
+        #     reward_penalty = -10
+        #     print('Primary Sidebands not formed')
+        #     print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
+        elif self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
+            terminal = True
+            reward_penalty = -5
+            print('Did not form soliton ...')
+            print('Spectral Corr:', corr)
         # elif self.step_cntr > self.Nt and achieved == False:
         #     terminal = True
         #     reward_penalty = -5
         #     print('Did not achieve desired spectrum ...')
         #     print('Spectral Corr:', corr)
+        if self.step_cntr > int(0.4*self.Nt):
+            if self.current_del_omega < self.del_omega_end or self.current_del_omega > self.del_omega_init:
+                self.det_out_cntr += self.ctrl_freq
+        
+        if self.det_out_cntr > int(0.2*self.Nt) and corr < 0.25:
+            terminal = True
+            reward_penalty = -5
+            print('Detuning out of range ...')
+            print('Current Detuning:', self.current_del_omega.item()/(2*np.pi*1e9), 'GHz')
         return terminal, reward_penalty
     
     def step(self, state, action, desired_spectrum):
@@ -433,17 +453,16 @@ class RL_MRR_Env():
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
         # det_delta = action*(2/self.Nt)*(self.del_omega_end - self.del_omega_init)
-        det_delta = self.rescale_and_quantize(action[1])*(2*np.pi)  # Convert GHz to rad/s
+        delta_omega = self.rescale_and_quantize(action[1], self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)*(2*np.pi)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
-            del_omega = self.current_del_omega + det_delta + self.delta_theta/(self.tR*2*torch.pi)
-
-            del_omega = torch.clamp(del_omega, min=self.del_omega_stop, max=self.del_omega_init)
+            del_omega = self.current_del_omega + delta_omega #+ self.delta_theta/(self.tR)
 
             self.current_del_omega = torch.clamp(del_omega, min=self.del_omega_end, max=self.del_omega_init)
 
-            Fdrive_val = self.Fdrive(del_omega, self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain)
-            u0 = self.ssfm_step(state, self.step_cntr, self.alpha, self.Dint_shift, del_omega, self.tR, self.gamma, \
+
+            Fdrive_val = self.Fdrive(self.current_del_omega + self.delta_theta/(self.tR), self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain)
+            u0 = self.ssfm_step(state, self.step_cntr, self.alpha, self.Dint_shift, self.current_del_omega + self.delta_theta/(self.tR), self.tR, self.gamma, \
                                 self.L, 10, 1e-3, 1, self.kext, Fdrive_val)
             state = u0
             P_avg = torch.mean(torch.abs(u0)**2)  # Compute average power
@@ -452,8 +471,9 @@ class RL_MRR_Env():
             self.step_cntr += 1
         self.next_state = u0
         
-        Acav = torch.sqrt(self.alpha/2)*u0*np.exp(1j*np.pi)/len(self.mu)
-        Ecav = torch.fft.fftshift(torch.fft.fft(Acav))
+        
+        Acav = torch.sqrt(self.alpha/2)*u0*np.exp(1j*torch.pi)/np.sqrt(len(self.mu))
+        Ecav = torch.fft.fftshift(torch.fft.fft(Acav))/np.sqrt(len(self.mu))
 
         cav = Fdrive_val*torch.sqrt(1-self.kext)
         wg = torch.sqrt(self.kext)*u0*np.exp(1j*np.pi)
@@ -466,10 +486,10 @@ class RL_MRR_Env():
         if len(self.pcav_hist) > 10000:
             self.pcav_hist.pop(0)
 
-        Ecav_dBm = 10*torch.log10(torch.abs(Ecav)**2)+30
-        Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None)
+        Ecav_dBm = 10*torch.log10(torch.abs(Ewg)**2)+30
+        Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None) # -60 dBm is the minimum power level we want to consider
         desired_spectrum_dBm = 10*torch.log10(torch.abs(desired_spectrum)**2)+30
-        desired_spectrum_dBm = torch.clamp(desired_spectrum_dBm, min=-60, max=None)
+        desired_spectrum_dBm = torch.clamp(desired_spectrum_dBm, min=-60, max=None) # -60 dBm is the minimum power level we want to consider
 
         
         # pop the first element of ecav_state and append new Ecav_dBm
@@ -478,12 +498,12 @@ class RL_MRR_Env():
             self.ecav_state = np.delete(self.ecav_state, 0, axis=0)
         self.ecav_state = np.concatenate((self.ecav_state, Ecav_dBm.cpu().numpy()[np.newaxis,:]), axis=0)
 
-        reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() #+ 1
+        reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() #+ curr_pcav#+ 
         # penalize for high variance in power
-        if len(self.env_p_hist) > 1:
-            power_var = np.std(self.env_p_hist)
-            if power_var > 0.001:
-                reward -= 2*len(self.env_p_hist) * (power_var - 0.001)
+        # if len(self.env_p_hist) > 1:
+        #     power_var = np.std(self.env_p_hist)
+        #     if power_var > 0.001:
+        #         reward -= 2*len(self.env_p_hist) * (power_var - 0.001)
         
         if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50 or torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() > 0.9:
             achieved = True
@@ -506,43 +526,48 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.16, p_min=0.12, ctrl_freq=100, thermal_effect='low')
+env = RL_MRR_Env(seq_len=70, p_max=0.2, p_min=0.1, ctrl_freq=100, thermal_effect='low',\
+                  delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
-desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
-desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30 
+desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 config = {
-    'input_dim': [env.seq_len, 441+2],
+    'input_dim': [env.seq_len, 300+2],
     'n_actions': 2,
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_v4',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm',
     'batch_size': 128,
-    'dist': 'beta',
+    'dist': 'beta', # 'beta' or 'normal'
     'train':False,
     'p_max': env.p_max,
     'p_min': env.p_min,
     'fc_dim':128,
-    'use_per':True
+    'use_per':True,
+    'delta_omega_min': env.delta_omega_min,  # Minimum detuning in Hz
+    'delta_omega_max': env.delta_omega_max,   # Maximum detuning in Hz
+    'delta_omega_step': env.delta_omega_step,   # Step size for detuning in
+    'bidirectional': False,  # Whether to use bidirectional detuning
     }
 # %%
 
-from rl_codes.sac import SACAgent
+from rl_codes.sac_v3 import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-                eval_mode=True, fc_dim=config['fc_dim'], use_per=config['use_per'])
+                eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'], bidir=config['bidirectional'])
 print(agent.actor)
 print(agent.critic_1)
 agent.load_models()
 # %%
-# '''
 state, acav, ecav = env.reset(10000)
 den = env.p_max - env.p_min
-obs = np.concatenate((ecav/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
+obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
 print('Chosen power:', env.power)
 r_hist = []
 action_hist = []
@@ -566,7 +591,7 @@ while not done:
         next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
         state = next_state
         ecav = ecav_
-        ecav_obs = np.concatenate((ecav_[-1]/10, env.power/den, env.rescale_and_quantize(action[1:])*1e-6), axis=0)
+        ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, env.rescale_and_quantize(action[1:])*1e-6), axis=0)
         obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
         obs = obs_ 
         score += reward
@@ -588,7 +613,7 @@ print('Test score %.2f' % score)
 import os
 
 # Create save directory if not exists
-save_dir = os.path.join('./results', agent.run_name, 'un_norm', env.thermal_effect)
+save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
 # %%

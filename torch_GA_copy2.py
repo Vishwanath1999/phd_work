@@ -139,9 +139,9 @@ alpha = k0+kext
 
 un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
-del_omega_init = 2*un_norm_kappa#sim_tensor['domega_init']
-del_omega_end = -10*un_norm_kappa#sim_tensor['domega_end']
-del_omega_stop = -12*un_norm_kappa#sim_tensor['domega_stop']
+del_omega_init = 4*un_norm_kappa#sim_tensor['domega_init']
+del_omega_end = -3*un_norm_kappa#sim_tensor['domega_end']
+del_omega_stop = -4*un_norm_kappa#sim_tensor['domega_stop']
 ind_sweep = sim_tensor['ind_pump_sweep'] 
 t_end = sim_tensor['Tscan']
 Dint = disp_tensor['Dint_new']#[0]
@@ -366,7 +366,7 @@ def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton
     # SaveData(saved_data,name)
 
 # %%
-def rescale_power(power, lower_limit=0.12, upper_limit=0.16, step_size=0.001):
+def rescale_power(power, lower_limit=0.05, upper_limit=0.4, step_size=0.001):
         """
         Rescale input power in [-1, 1] to [lower_limit, upper_limit] and quantize to step_size.
 
@@ -387,7 +387,7 @@ def rescale_power(power, lower_limit=0.12, upper_limit=0.16, step_size=0.001):
         quantized_value = np.round(value / step_size) * step_size
         return quantized_value
 # %%
-def rescale_and_quantize(action, lower_limit=-1e6, upper_limit=1e6, step_size=1e4):
+def rescale_and_quantize(action, lower_limit=-500e6, upper_limit=500e6, step_size=1e4):
     """
     Rescale input in [-1, 1] to [lower_limit, upper_limit] and quantize to step_size.
 
@@ -429,7 +429,7 @@ def initialize_del_omega_all(fine, dwell_steps, Nt, del_omega_init, del_omega_en
     del_omega_all[:, 0] = del_omega_init
 
     # Use fine as the action for quantization
-    delta_del_omega = rescale_and_quantize(fine)
+    delta_del_omega = rescale_and_quantize(fine, lower_limit=-5e6, upper_limit=5e6, step_size=1e4)
     delta_del_omega = torch.full((num_pumps,), delta_del_omega, dtype=torch.float64, device=device)
 
     min_del_omega = torch.minimum(del_omega_init, del_omega_end)
@@ -506,7 +506,7 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate', save_
         spec_dBm (np.ndarray): Spectrum in dBm.
         num_step (int): Number of steps taken to achieve soliton.
     """
-    pump_power = rescale_power(pump_power)
+    pump_power = rescale_power(pump_power, lower_limit=0.05, upper_limit=0.2, step_size=0.001)
     pump_power = torch.tensor(pump_power, dtype=torch.float64, device=device)
     del_omega_all = initialize_del_omega_all(
     fine=fine,    # Fine adjustment in [-1, 1]
@@ -566,21 +566,21 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate', save_
         plt.show()
         plt.close()
 
-        plt.figure(figsize=(10,6))
-        plt.plot(np_dict['delta_theta']*FSR.item(), linewidth=1.5)
-        plt.xlabel('Tuning Steps', fontsize=16)
-        plt.ylabel(r'$\omega _{\Theta}$', fontsize=16)
-        plt.xticks(fontsize=16)
-        plt.title(ton + ' thermal effect', fontsize=18)
-        plt.yticks(fontsize=16)
-        plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
-        # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.png')
-        # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.svg', format='svg')
-        if save_dir is not None:
-            plt.savefig(os.path.join(save_dir, 'delta_theta_ton_' + ton + '.png'))
-            plt.savefig(os.path.join(save_dir, 'delta_theta_ton_' + ton + '.svg'), format='svg')
-        plt.show()
-        plt.close()
+        # plt.figure(figsize=(10,6))
+        # plt.plot(np_dict['delta_theta']*FSR.item(), linewidth=1.5)
+        # plt.xlabel('Tuning Steps', fontsize=16)
+        # plt.ylabel(r'$\omega _{\Theta}$', fontsize=16)
+        # plt.xticks(fontsize=16)
+        # plt.title(ton + ' thermal effect', fontsize=18)
+        # plt.yticks(fontsize=16)
+        # plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
+        # # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.png')
+        # # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.svg', format='svg')
+        # if save_dir is not None:
+        #     plt.savefig(os.path.join(save_dir, 'delta_theta_ton_' + ton + '.png'))
+        #     plt.savefig(os.path.join(save_dir, 'delta_theta_ton_' + ton + '.svg'), format='svg')
+        # plt.show()
+        # plt.close()
 
         # plot pcav
         plt.figure(figsize=(10,6))
@@ -643,7 +643,7 @@ plt.style.use('physrev.mplstyle')
 # Define desired_spectrum_tensor as a global variable for use in other functions
 desired_spectrum_tensor = torch.tensor(desired_spectrum_dBm, dtype=torch.float64, device=device)
 
-run_name = 'GA_LLE_optim_corr_coeff_to_un_norm'
+run_name = 'GA_LLE_optim_corr_coeff_num_steps'
 
 algorithm_param = {
     'max_num_iteration': 40,
