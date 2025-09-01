@@ -250,7 +250,7 @@ class Actor(nn.Module):
     def forward(self, state):
         out, _ = self.seq_encoder(state)
         x = out[:,-1,:]  # Take the last output of the GRU
-        x = F.relu(self.fc1(x))
+        x = F.silu(self.fc1(x))
         if self.dist == 'normal':
             mu = self.mu_layer(x)
             log_std = self.log_std_layer(x)
@@ -344,7 +344,7 @@ class CriticNetwork(nn.Module):
         out, _ = self.seq_encoder(state)
         x = out[:,-1,:]  # Take the last output of the GRU
         x = T.cat([x, action], dim=1)  # Concatenate action
-        x = F.relu(self.fc1(x))
+        x = F.silu(self.fc1(x))
         q_value = self.q_layer(x)
         return q_value
 

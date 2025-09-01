@@ -21,7 +21,7 @@ H_BAR = cts.hbar
 class RL_MRR_Env():
 
     def __init__(self, seq_len=50, p_max=0.3, p_min=0.1, ctrl_freq=100, thermal_effect='moderate', 
-                 delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4):
+                 delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5):
         
 
         super(RL_MRR_Env, self).__init__()
@@ -93,8 +93,8 @@ class RL_MRR_Env():
         alpha = k0+kext
         self.alpha = alpha
 
+        self.soft_clamp_ = soft_clamp
         self.thermal_effect = thermal_effect
-
         self.tau0 = 100e-9
         if thermal_effect == 'low':
             self.xi = -1.2e4
@@ -110,7 +110,7 @@ class RL_MRR_Env():
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
         # del_omega_init = self.sim_tensor['domega_init']
-        del_omega_init = 4*self.un_norm_kappa
+        del_omega_init = 7*self.un_norm_kappa
         self.del_omega_init = del_omega_init
         self.current_del_omega = del_omega_init
         # del_omega_end = self.sim_tensor['domega_end']
@@ -181,6 +181,7 @@ class RL_MRR_Env():
         self.t_sim_step = self.t_sim[1] - self.t_sim[0]
 
         self.primary_sidebands = loadmat('primary_sidebands.mat')['spec'][0]
+        self.primary_sidebands = torch.tensor(self.primary_sidebands, device=DEVICE, dtype=torch.float64)
         # self.pcav_ref = loadmat('Pcomb_rl_allv2.mat')['Pcomb'].T
         self.seq_len = seq_len
         self.p_max = p_max
@@ -189,6 +190,7 @@ class RL_MRR_Env():
         self.delta_omega_min = delta_omega_min  
         self.delta_omega_max = delta_omega_max
         self.delta_omega_step = delta_omega_step
+        self.softness = softness
 
     
     @staticmethod
@@ -350,21 +352,23 @@ class RL_MRR_Env():
             Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None)
             Acav_np = Acav.cpu().numpy()
             curr_pcav = np.sum(np.abs(Acav_np))
-            self.pcav_hist.append(curr_pcav)
+            
             if idx % self.ctrl_freq == 0:
                 self.ecav_state.append(Ecav_dBm.cpu().numpy())
+                self.pcav_hist.append(curr_pcav)
                 if len(self.ecav_state) > self.seq_len:
                     self.ecav_state.pop(0)
+                    self.pcav_hist.pop(0)
 
         self.primary_sidebands_flag = False
         self.ecav_state = np.array(self.ecav_state)
 
-        self.env_p_hist = []
+        # self.env_p_hist = []
 
         self.det_out_cntr = 0
         
         print('Reset...')
-        return self.state, Acav_np, self.ecav_state
+        return self.state, Acav_np, self.ecav_state, np.array(self.pcav_hist)
 
     def rescale_and_quantize(self,action, lower_limit=-1e6, upper_limit=1e6, step_size=1e4):
         """
@@ -413,11 +417,16 @@ class RL_MRR_Env():
         reward_penalty = 0
         corr = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item()
         
-        # if self.step_cntr == int(0.4*self.Nt) and self.primary_sidebands_flag == False:
-        #     terminal = True
-        #     reward_penalty = -5
-        #     print('Primary Sidebands not formed')
-            # print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
+        # if self.step_cntr-self.init_steps_ >= int(0.4*self.Nt) and self.primary_sidebands_flag == False and corr<0.3:
+        #     prim_corr = torch.corrcoef(torch.stack([self.primary_sidebands, Ecav_dBm]))[0,1].item()
+        #     if prim_corr < 0.7:
+        #         terminal = True
+        #         reward_penalty = -3
+        #         print('Primary Sidebands not formed')
+        #     else:
+        #         reward_penalty = 1
+        #         self.primary_sidebands_flag = True
+        #     # print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
 
         if self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
             terminal = True
@@ -429,22 +438,53 @@ class RL_MRR_Env():
         #     reward_penalty = -5
         #     print('Did not achieve desired spectrum ...')
         #     print('Spectral Corr:', corr)
-        if self.step_cntr > int(0.4*self.Nt):
-            if self.current_del_omega < self.del_omega_end or self.current_del_omega > self.del_omega_init:
-                self.det_out_cntr += self.ctrl_freq
+        # if self.step_cntr > int(0.4*self.Nt):
+        #     if self.current_del_omega < self.del_omega_end or self.current_del_omega > self.del_omega_init:
+        #         self.det_out_cntr += self.ctrl_freq
         
-        if self.det_out_cntr > int(0.2*self.Nt) and corr < 0.25:
-            terminal = True
-            reward_penalty = -5
-            print('Detuning out of range ...')
-            print('Current Detuning:', self.current_del_omega.item()/(2*np.pi*1e9), 'GHz')
+        # if self.det_out_cntr > int(0.2*self.Nt) and corr < 0.25:
+        #     terminal = True
+        #     reward_penalty = -5
+        #     print('Detuning out of range ...')
+        #     print('Current Detuning:', self.current_del_omega.item()/(2*np.pi*1e9), 'GHz')
         return terminal, reward_penalty
+    
+    @staticmethod
+    def soft_clamp(x: torch.Tensor,
+                low: torch.Tensor,
+                high: torch.Tensor,
+                softness: float = 0.5) -> torch.Tensor:
+        """
+        Smooth alternative to torch.clamp.
+        softness -> 0  →  hard clamp
+        softness → 1   →  almost linear
+        """
+        # centre & scale
+        mid   = (high + low) / 2
+        span  = (high - low) / 2          # >0
+        z     = (x - mid) / (span * softness)
+
+        # ⟨−∞,∞⟩ → ⟨−1,1⟩  (tanh)  then back to physical units
+        return mid + span * torch.tanh(z)
+    
+    @staticmethod
+    def spectral_width_dbm_torch(y_dbm: torch.Tensor, threshold: float = -60, center_idx: int = None, norm: int = 300) -> torch.Tensor:
+        """
+        Counts how many points in y_dbm (PyTorch tensor) are above threshold (dBm), excluding the central mode,
+        and divides by norm (default 300).
+        """
+        if center_idx is None:
+            center_idx = y_dbm.shape[0] // 2
+        mask = (y_dbm > threshold)
+        mask[center_idx] = False  # exclude central mode
+        width = torch.sum(mask.float()) / norm
+        return width.item()
     
     def step(self, state, action, desired_spectrum):
         env.power = self.rescale_power(action[0:1], lower_limit=self.p_min, upper_limit=self.p_max, step_size=0.001)
-        self.env_p_hist.append(env.power[0])
-        if len(self.env_p_hist) > env.seq_len:
-            self.env_p_hist.pop(0)
+        # self.env_p_hist.append(env.power[0])
+        # if len(self.env_p_hist) > env.seq_len:
+        #     self.env_p_hist.pop(0)
         
         Ppmp = torch.tensor(env.power, dtype=torch.float64)
         
@@ -458,8 +498,11 @@ class RL_MRR_Env():
         for _ in range(self.ctrl_freq):
             del_omega = self.current_del_omega + delta_omega #+ self.delta_theta/(self.tR)
 
-            self.current_del_omega = torch.clamp(del_omega, min=min(self.del_omega_end, self.del_omega_init), max=max(self.del_omega_end, self.del_omega_init))
-
+            if self.soft_clamp_ == False:
+                self.current_del_omega = torch.clamp(del_omega, min=min(self.del_omega_end, self.del_omega_init), max=max(self.del_omega_end, self.del_omega_init))
+            else:
+                clamped_ = self.soft_clamp(del_omega*1e-9, low=min(self.del_omega_end, self.del_omega_init)*1e-9, high=max(self.del_omega_end, self.del_omega_init)*1e-9, softness=self.softness)
+                self.current_del_omega = clamped_*1e9
 
             Fdrive_val = self.Fdrive(self.current_del_omega + self.delta_theta/(self.tR), self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain)
             u0 = self.ssfm_step(state, self.step_cntr, self.alpha, self.Dint_shift, self.current_del_omega + self.delta_theta/(self.tR), self.tR, self.gamma, \
@@ -469,8 +512,7 @@ class RL_MRR_Env():
             d_delta_theta_dt = -self.delta_theta / self.tau0 + self.xi * P_avg
             self.delta_theta += (1 * self.tR) * d_delta_theta_dt  # Euler step
             self.step_cntr += 1
-        self.next_state = u0
-        
+        self.next_state = u0        
         
         Acav = torch.sqrt(self.alpha/2)*u0*np.exp(1j*torch.pi)/np.sqrt(len(self.mu))
         Ecav = torch.fft.fftshift(torch.fft.fft(Acav))/np.sqrt(len(self.mu))
@@ -483,7 +525,7 @@ class RL_MRR_Env():
         Acav_np = Acav.numpy()
         curr_pcav = np.sum(np.abs(Acav_np))
         self.pcav_hist.append(curr_pcav)
-        if len(self.pcav_hist) > 10000:
+        if len(self.pcav_hist) > env.seq_len:
             self.pcav_hist.pop(0)
 
         Ecav_dBm = 10*torch.log10(torch.abs(Ewg)**2)+30
@@ -498,7 +540,13 @@ class RL_MRR_Env():
             self.ecav_state = np.delete(self.ecav_state, 0, axis=0)
         self.ecav_state = np.concatenate((self.ecav_state, Ecav_dBm.cpu().numpy()[np.newaxis,:]), axis=0)
 
-        reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() #+ curr_pcav#+ 
+        if torch.corrcoef(torch.stack([self.primary_sidebands, Ecav_dBm]))[0,1].item() > 0.7:
+            self.primary_sidebands_flag = True
+        
+        # if self.primary_sidebands_flag == False:
+        #     reward = curr_pcav
+        # else:
+        reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + self.spectral_width_dbm_torch(Ecav_dBm, norm=150) # - 0.3*curr_pcav#+ 
         # self.primary_sidebands_flag = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1]
         # penalize for high variance in power
         # if len(self.env_p_hist) > 1:
@@ -523,11 +571,12 @@ class RL_MRR_Env():
             
         
         return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state, Ewg.cpu().numpy()
+
 # %%
 # torch seed
 # torch.manual_seed(0)
 env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
-                  delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4)
+                  delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -537,15 +586,15 @@ desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 config = {
-    'input_dim': [env.seq_len, 300+2],
+    'input_dim': [env.seq_len, 300+3],
     'n_actions': 2,
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm',
-    'batch_size': 128,
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v2',
+    'batch_size': 256,
     'dist': 'beta', # 'beta' or 'normal'
-    'train':False,
+    'train':True,
     'p_max': env.p_max,
     'p_min': env.p_min,
     'fc_dim':256,
@@ -554,6 +603,8 @@ config = {
     'delta_omega_max': env.delta_omega_max,   # Maximum detuning in Hz
     'delta_omega_step': env.delta_omega_step,   # Step size for detuning in
     'bidirectional': False,  # Whether to use bidirectional detuning
+    'env_soft_clamp': env.soft_clamp_,  # Whether to use soft clamping in the environment
+    'softness': env.softness,  # Softness parameter for soft clamping
     }
 # %%
 
@@ -564,11 +615,12 @@ agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], a
 print(agent.actor)
 print(agent.critic_1)
 agent.load_models()
+'''
 # %%
-# '''
-state, acav, ecav = env.reset(10000)
+state, acav, ecav, pcav = env.reset(10000)
+log_pcav = 10*np.log10(pcav + 1e-12) + 30
 den = env.p_max - env.p_min
-obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
+obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis]),axis=1)
 print('Chosen power:', env.power)
 r_hist = []
 action_hist = []
@@ -593,10 +645,11 @@ while not done:
         next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
         state = next_state
         ecav = ecav_
-        ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end)), axis=0)
+        curr_pcav = np.sum(np.abs(acav_),keepdims=True)
+        ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30), axis=0)
         obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
         obs = obs_ 
-        score += reward
+        score += reward 
         curr_pcav = np.sum(np.abs(acav_)**2)
         pcav_hist.append(curr_pcav)
         r_hist.append(reward)
@@ -611,6 +664,7 @@ while not done:
 pbar.close()
 
 print('Test score %.2f' % score, 'at step %d' % idx)
+
 # %%
 # %%
 import os
@@ -620,7 +674,6 @@ save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
 # %%
-# find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))
 plt.plot(1e3*np.array(pcav_hist), linewidth=1.5)
 plt.grid()
@@ -894,41 +947,281 @@ if idx > int(0.5*env.max_steps):
 plt.show()
 '''
 # %%
+def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, thermal_effect):
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+    import os
+    import numpy as np
+    import fractions
+
+    plt.style.use('physrev.mplstyle')
+    mod_pow = str(env.power[0]).replace('.','_')
+    # Convert tuning steps to time in microseconds
+    time_axis = np.arange(len(pcav_hist)) * 100 * env.tR.item() * 1e6  # microseconds
+
+    # 1. Pcav history
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, 1e3*np.array(pcav_hist), linewidth=1.5)
+    plt.grid()
+    plt.xlabel(r'Time ($\mu$s)', fontsize=16)
+    plt.ylabel(r'$P_{cav}$ (mW)', fontsize=16)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.tight_layout()    
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 2. Acav time evolution
+    plt.figure(figsize=(14,4))
+    plt.imshow(1e3*np.abs(np.array(acav_hist).T)**2, aspect='auto', cmap='jet',
+               extent=[time_axis[0], time_axis[-1], -1e12*env.tR.item()/2, 1e12*env.tR.item()/2])
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=16)
+    cbar.set_label(r'Power $(mW)$', fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.xlabel(r'Time ($\mu$s)', fontsize=14)
+    plt.ylabel(r'$t_R (ps)$', fontsize=14)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 3. Spectrum evolution (FFT of acav_hist)
+    plt.figure(figsize=(14,4))
+    spectrum = np.fft.fftshift(np.fft.fft(np.array(acav_hist).T, axis=0), axes=0)
+    spectrum_dBm = 10*np.log10(np.abs(spectrum)**2)+30
+    spectrum_dBm = np.clip(spectrum_dBm, -60, 10)
+    plt.imshow(spectrum_dBm, aspect='auto', cmap='jet',
+               extent=[time_axis[0], time_axis[-1], env.mu.min().item(), env.mu.max().item()])
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel(r'$\mu$' +'(rel)', fontsize=18)
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=16)
+    cbar.set_label(r'Power $(dBm)$', fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 4. Ewg spectrum evolution
+    plt.figure(figsize=(14,4))
+    e_wg_hist = np.array(e_wg_hist).T
+    ewg_dBm = 10*np.log10(np.abs(e_wg_hist)**2)+30
+    ewg_dBm = np.clip(ewg_dBm, -60, 50)
+    plt.imshow(ewg_dBm, aspect='auto', cmap='jet',
+               extent=[time_axis[0], time_axis[-1], env.mu.min().item(), env.mu.max().item()])
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel(r'$\mu$' +'(rel)', fontsize=18)
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=16)
+    cbar.set_label(r'Power $(dBm)$', fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 5. Reward plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, r_hist)
+    plt.xlabel(r'Time ($\mu$s)', fontsize=16)
+    plt.ylabel('Reward ', fontsize=16)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.grid()
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_rewards_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_rewards_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 8. Detuning array (GHz)
+    detuning_array = np.array(det_hist)
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, detuning_array*1e-9, linewidth=1.5, label='Pump detuning')
+    plt.plot(time_axis, np.array(delta_theta)*1e-9/(2*np.pi*env.tR.item()), linewidth=1.5 , label=r'$f_{\Theta}$')
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel('Freq (GHz)', fontsize=18)
+    plt.grid()
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.legend(fontsize=18)
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 9. Detuning in kappa units
+    kappa = env.un_norm_kappa.item()/(2*np.pi)
+    detuning_kappa = detuning_array / kappa
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, detuning_kappa, linewidth=1.5)
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel(r'Pump detuning ($\kappa$ units)', fontsize=18)
+    plt.grid()
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    ymin, ymax = plt.ylim()
+    yticks = np.arange(np.floor(ymin*2)/2, np.ceil(ymax*2)/2 + 0.01, 0.5)
+    def frac_label(val):
+        frac = fractions.Fraction(val).limit_denominator(8)
+        if frac.numerator == 0:
+            return r"$0$"
+        elif frac.denominator == 1:
+            return rf"${frac.numerator}\,\kappa$"
+        elif frac.numerator == 1:
+            return rf"$\frac{{1}}{{{frac.denominator}}}\,\kappa$"
+        elif frac.numerator == -1:
+            return rf"$-\frac{{1}}{{{frac.denominator}}}\,\kappa$"
+        else:
+            return rf"$\frac{{{frac.numerator}}}{{{frac.denominator}}}\,\kappa$"
+    ytick_labels = [frac_label(y) for y in yticks]
+    plt.yticks(yticks, ytick_labels, fontsize=18)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.svg'), format='svg')
+    plt.show()
+
+    # 10. Pump power
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, env.rescale_power(action_hist[:,0]), linewidth=1.5)
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel('Pump Power (mW)', fontsize=18)
+    plt.grid()
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # # 11. Delta theta
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(time_axis, np.array(delta_theta)*1e-6/(2*np.pi*env.tR.item()), linewidth=1.5)
+    # plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    # plt.ylabel(r'$f _{\Theta}$ (MHz)', fontsize=18)
+    # plt.grid()
+    # plt.xticks(fontsize=18)
+    # plt.yticks(fontsize=18)
+    # plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_delta_theta_spec_all_ctrl.png'))
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_delta_theta_spec_all_ctrl.svg'), format='svg')
+    # plt.show()
+
+    # 12. Detuning vs delta theta
+    plt.figure(figsize=(10, 6))
+    plt.plot(detuning_array*1e-9, np.array(delta_theta)*1e-9/(2*np.pi*env.tR.item()), linewidth=1.5)
+    plt.xlabel(r'Pump detuning (GHz)', fontsize=18)
+    plt.ylabel(r'$f _{\Theta}$ (GHz)', fontsize=18)
+    plt.grid()
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_detuning_delta_theta_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_detuning_delta_theta_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 6. Obtained vs desired spectrum (mode index)
+    plt.figure(figsize=(14,4))
+    plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), obtained_spectrum,
+               label='Obtained Spectrum',alpha=1, linewidth=1.5)
+    plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum_dBm)),
+               desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
+    plt.xlabel('Rel. Mode no.', fontsize=18)
+    plt.ylabel('Power(dBm)', fontsize=18)
+    plt.grid()
+    plt.ylim(-90,30)
+    plt.xlim(-150, 150)
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.legend(fontsize=18,loc='lower center')
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_modes.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_modes.svg'), format='svg')
+    plt.show()
+
+    # 7. Obtained vs desired spectrum (frequency)
+    plt.figure(figsize=(14,4))
+    plt.vlines(freq, -60*np.ones(len(ecav[-1])), obtained_spectrum,
+               label='Obtained Spectrum',alpha=1, linewidth=1.5)
+    plt.vlines(freq, -60*np.ones(len(desired_spectrum_dBm)),
+               desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
+    plt.xlabel('Freq. (THz)', fontsize=18)
+    plt.ylabel('Power(dBm)', fontsize=18)
+    plt.grid()
+    plt.ylim(-90,30)
+    plt.xlim(freq[220-150], freq[220+150])
+    plt.xticks(fontsize=18, fontweight='bold')
+    plt.yticks(fontsize=18, fontweight='bold')
+    plt.legend(fontsize=18, loc='lower center')
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_freq.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_freq.svg'), format='svg')
+    plt.show()
+    print('All plots saved successfully in', save_dir)
+# %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low')
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',
+                     delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
     from rl_codes.sac_v3 import SACAgent
     config = {
-    'input_dim': [env.seq_len, 300+2],
-    'n_actions': 2,
-    'alpha': 3e-4,
-    'beta': 3e-4,
-    'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm',
-    'batch_size': 256,
-    'dist': 'beta', # 'beta' or 'normal'
-    'train':False,
-    'p_max': env.p_max,
-    'p_min': env.p_min,
-    'fc_dim':256,
-    'use_per':True,
-    'delta_omega_min': env.delta_omega_min,  # Minimum detuning in Hz
-    'delta_omega_max': env.delta_omega_max,   # Maximum detuning in Hz
-    'delta_omega_step': env.delta_omega_step,   # Step size for detuning in
-    'bidirectional': False,  # Whether to use bidirectional detuning
+        'input_dim': [env.seq_len, 300+3],
+        'n_actions': 2,
+        'alpha': 3e-4,
+        'beta': 3e-4,
+        'mem_size': int(1e6),
+        'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v2',
+        'batch_size': 256,
+        'dist': 'beta',
+        'train': True,
+        'p_max': env.p_max,
+        'p_min': env.p_min,
+        'fc_dim': 256,
+        'use_per': True,
+        'delta_omega_min': env.delta_omega_min,
+        'delta_omega_max': env.delta_omega_max,
+        'delta_omega_step': env.delta_omega_step,
+        'bidirectional': False,
+        'env_soft_clamp': env.soft_clamp_,
+        'softness': env.softness,
     }
     agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                     mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
                     eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'], bidir=config['bidirectional'])
 
     agent.load_models()
-    # 
 
-    state, _, ecav = env.reset(10000)
+    state, acav, ecav, pcav = env.reset(10000)
+    log_pcav = 10*np.log10(pcav + 1e-12) + 30
     den = env.p_max - env.p_min
-    obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1))),axis=1)
+    obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power*np.ones((env.seq_len,1))/den, np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis]), axis=1)
     print('Chosen power:', env.power)
     r_hist = []
     action_hist = []
@@ -937,283 +1230,46 @@ def run_test_processes(run_id, save_dir):
     pcav_hist = []
     pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=run_id, desc=f'Run {run_id}')
     idx = 0
-    done = False
     delta_theta = []
     det_hist = []
+    e_wg_hist = []
+    acav_hist = []
     while not done:
-    # for idx in tqdm(range(env.init_steps_, int(env.max_steps)), ncols=120):
-        # perform random actions
-        # try:
-            action = agent.choose_action(obs, True)
-
-            next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
-            state = next_state
-            ecav = ecav_
-            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end)), axis=0)
-            obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
-            obs = obs_ 
-            score += reward
-            curr_pcav = np.sum(np.abs(acav_)**2)
-            pcav_hist.append(curr_pcav)
-            r_hist.append(reward)
-            action_hist.append(action)
-            delta_theta.append(env.delta_theta.item())
-            det_hist.append(env.current_del_omega.item()/(2*np.pi))  # Convert rad/s to GHz
-        
-            idx += env.ctrl_freq
-            pbar.update(env.ctrl_freq)
+        action = agent.choose_action(obs, True)
+        next_state, reward, done, terminal, _, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
+        state = next_state
+        ecav = ecav_
+        curr_pcav = np.sum(np.abs(acav_), keepdims=True)
+        ecav_obs = np.concatenate((ecav_[-1, len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30), axis=0)
+        obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
+        obs = obs_
+        score += reward
+        curr_pcav = np.sum(np.abs(acav_)**2)
+        pcav_hist.append(curr_pcav)
+        r_hist.append(reward)
+        action_hist.append(action)
+        delta_theta.append(env.delta_theta.item())
+        det_hist.append(env.current_del_omega.item()/(2*np.pi))
+        e_wg_hist.append(e_wg)
+        acav_hist.append(acav_)
+        idx += env.ctrl_freq
+        pbar.update(env.ctrl_freq)
     pbar.close()
 
-    # obtained_spectrum = 10*np.log10(np.abs(e_wg)**2) + 30
-
-    # plt.figure(figsize=(14,4))
-    # plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), obtained_spectrum, \
-    #         label='Obtained Spectrum',alpha=1, linewidth=1.5)
-    # plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
-    #             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
-    # plt.xlabel('Rel. Mode no.', fontsize=18)
-    # plt.ylabel('Power(dBm)', fontsize=18)
-    # plt.grid()
-    # plt.ylim(-90,50)
-    # # plt.xlim(-150, 150)
-    # plt.xticks(fontsize=18)
-    # plt.yticks(fontsize=18)
-    # plt.legend(fontsize=18,loc='lower center')
-    # plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
-    # # mod_pow = str(env.power[0]).replace('.','_')
-    # plt.tight_layout()
-    # if score>12000:
-    #     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.png'))
-    # plt.show()
-
-    # plt.figure(figsize=(14,4))
-    # plt.vlines(freq, -60*np.ones(len(ecav[-1])), obtained_spectrum, \
-    #         label='Obtained Spectrum',alpha=1, linewidth=1.5)
-    # plt.vlines(freq, -60*np.ones(len(desired_spectrum)),\
-    #             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
-    # plt.xlabel('Freq. (THz)', fontsize=18)
-    # plt.ylabel('Power(dBm)', fontsize=18)
-    # plt.grid()
-    # plt.ylim(-90,50)
-    # # plt.xlim(freq[220-150], freq[220+150])
-    # plt.xticks(fontsize=18, fontweight='bold')
-    # plt.yticks(fontsize=18, fontweight='bold')
-    # plt.legend(fontsize=18, loc='lower center')
-    # plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
-    # mod_pow = str(env.power[0]).replace('.','_')
-    # plt.tight_layout()
-    # if score>12000:
-    #     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.png'))
-    # plt.show()
-    
-    # # if env.step_cntr >= env.max_steps-env.init_steps_-2:
-    # # save the reward history
-    if terminal ==False:
+    if terminal == False:
         print(f'Run {run_id} completed with score {score} at step {idx}')
         np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
         np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), -1*np.array(det_hist) + np.array(delta_theta))
-# %%
-# def run_test_processes(run_id, save_dir, result_queue):
-#     # Re-create environment and agent inside the process
-#     env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low')
-#     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
-#     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
-#     from rl_codes.sac_v3 import SACAgent
-#     config = {
-#         'input_dim': [env.seq_len, 300+2],
-#         'n_actions': 2,
-#         'alpha': 3e-4,
-#         'beta': 3e-4,
-#         'mem_size': int(1e6),
-#         'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm',
-#         'batch_size': 256,
-#         'dist': 'beta',
-#         'train': False,
-#         'p_max': env.p_max,
-#         'p_min': env.p_min,
-#         'fc_dim': 256,
-#         'use_per': True,
-#         'delta_omega_min': env.delta_omega_min,
-#         'delta_omega_max': env.delta_omega_max,
-#         'delta_omega_step': env.delta_omega_step,
-#         'bidirectional': False,
-#     }
-#     agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
-#                      mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-#                      eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'], bidir=config['bidirectional'])
-
-#     agent.load_models()
-
-#     state, _, ecav = env.reset(10000)
-#     den = env.p_max - env.p_min
-#     obs = np.concatenate((ecav[:, len(env.mu)//2-150:len(env.mu)//2+150]/10,
-#                           env.power*np.ones((env.seq_len, 1))/den,
-#                           np.zeros((env.seq_len, 1))), axis=1)
-#     r_hist = []
-#     action_hist = []
-#     score = 0
-#     done = False
-#     pcav_hist = []
-#     pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=run_id, desc=f'Run {run_id}')
-#     idx = 0
-#     delta_theta = []
-#     det_hist = []
-#     terminal = False  # ensure defined
-#     while not done:
-#         action = agent.choose_action(obs, True)
-
-#         next_state, reward, done, terminal, _, acav_, ecav_, _ = env.step(state, action, desired_spectrum_tensor)
-#         state = next_state
-#         ecav = ecav_
-#         ecav_obs = np.concatenate((ecav_[-1, len(env.mu)//2-150:len(env.mu)//2+150]/10,
-#                                    env.power/den,
-#                                    5*env.current_del_omega/(env.del_omega_init - env.del_omega_end)), axis=0)
-#         obs = np.concatenate((obs[1:], ecav_obs[np.newaxis, :]), axis=0)
-#         score += reward
-#         curr_pcav = np.sum(np.abs(acav_)**2)
-#         pcav_hist.append(curr_pcav)
-#         r_hist.append(reward)
-#         action_hist.append(action)
-#         delta_theta.append(env.delta_theta.item())
-#         det_hist.append(env.current_del_omega.item()/(2*np.pi))
-
-#         idx += env.ctrl_freq
-#         pbar.update(env.ctrl_freq)
-#     pbar.close()
-
-#     # Only send back non-None results
-#     if terminal==False:
-#         pcav_arr = np.array(pcav_hist)
-#         freq_arr = np.array(det_hist) + np.array(delta_theta)  # your "freq"
-#         result_queue.put((run_id, pcav_arr, freq_arr))
-# %%
-# # write a function to load the reward history and plot it
-# def plot_reward_histories_sigma(files, N=100, S=0, label='Reward', color='C0'):
-#     """
-#     Plot rolling mean and std of rewards from multiple runs, handling different lengths.
-#     Optionally leave the last S samples from max_len and then plot.
-
-#     Args:
-#         files (list): List of file paths to .npy reward histories.
-#         N (int): Window size for rolling mean/std.
-#         S (int): Number of samples to leave from the end.
-#         label (str): Label for the mean line.
-#         color (str): Color for the plot.
-#     """
-#     import numpy as np
-#     import matplotlib.pyplot as plt
-#     import matplotlib.ticker as ticker
-
-#     plt.style.use('physrev.mplstyle')
-
-#     # Load all reward histories
-#     rewards = [np.load(f) for f in files]
-#     max_len = max(len(r) for r in rewards)
-#     # Pad with np.nan to align lengths
-#     rewards_padded = np.full((len(rewards), max_len), np.nan)
-#     for i, r in enumerate(rewards):
-#         rewards_padded[i, :len(r)] = r
-
-#     # Optionally leave the last S samples
-#     plot_len = max_len - S if S > 0 else max_len
-
-#     # Compute rolling mean and std, ignoring nan
-#     rolling_mean = []
-#     rolling_std = []
-#     for t in range(plot_len):
-#         window = rewards_padded[:, max(0, t-N+1):t+1]
-#         vals = window[~np.isnan(window)]
-#         if len(vals) > 0:
-#             rolling_mean.append(np.mean(vals))
-#             rolling_std.append(np.std(vals))
-#         else:
-#             rolling_mean.append(np.nan)
-#             rolling_std.append(np.nan)
-
-#     steps = np.linspace(0, 100*plot_len, plot_len)*1e-5
-#     mu = np.array(rolling_mean)
-#     sigma = np.array(rolling_std)
-
-#     plt.figure(figsize=(7, 5))
-#     plt.plot(steps, mu, color=color, linewidth=1.5)
-#     plt.fill_between(steps, mu - sigma, mu + sigma, color=color, alpha=0.3)
-#     plt.xlabel(r'Steps $(\times 10^5)$', fontsize=14)
-#     plt.ylabel('Reward', fontsize=16)
-#     plt.xticks(fontsize=16)
-#     plt.yticks(fontsize=16)
-#     # set x-ticks to exponent format
-#     # formatter = ticker.ScalarFormatter(useMathText=True)
-#     # formatter.set_scientific(True)
-#     # formatter.set_powerlimits((-1, 1))
-#     # plt.gca().xaxis.set_major_formatter(formatter)
-#     # plt.title('Reward Rolling Mean ± Std', fontsize=16, fontweight='bold')
-#     # plt.legend(fontsize=14)
-#     plt.grid()
-#     plt.tight_layout()
-#     plt.savefig(os.path.join(save_dir, 'reward_histories_sigma.png'))
-#     plt.show()
-# # %%
-# def plot_reward_histories_min_max(files, N=100, S=0, label='Reward', color='C0'):
-#     """
-#     Plot rolling mean and min/max of rewards from multiple runs, handling different lengths.
-#     Optionally leave the last S samples from max_len and then plot.
-
-#     Args:
-#         files (list): List of file paths to .npy reward histories.
-#         N (int): Window size for rolling stats.
-#         S (int): Number of samples to leave from the end.
-#         label (str): Label for the mean line.
-#         color (str): Color for the plot.
-#     """
-#     import numpy as np
-#     import matplotlib.pyplot as plt
-
-#     plt.style.use('physrev.mplstyle')
-
-#     # Load all reward histories
-#     rewards = [np.load(f) for f in files]
-#     max_len = max(len(r) for r in rewards)
-#     # Pad with np.nan to align lengths
-#     rewards_padded = np.full((len(rewards), max_len), np.nan)
-#     for i, r in enumerate(rewards):
-#         rewards_padded[i, :len(r)] = r
-
-#     # Optionally leave the last S samples
-#     plot_len = max_len - S if S > 0 else max_len
-
-#     # Compute rolling mean, min, and max, ignoring nan
-#     rolling_mean = []
-#     rolling_min = []
-#     rolling_max = []
-#     for t in range(plot_len):
-#         window = rewards_padded[:, max(0, t-N+1):t+1]
-#         vals = window[~np.isnan(window)]
-#         if len(vals) > 0:
-#             rolling_mean.append(np.mean(vals))
-#             rolling_min.append(np.min(vals))
-#             rolling_max.append(np.max(vals))
-#         else:
-#             rolling_mean.append(np.nan)
-#             rolling_min.append(np.nan)
-#             rolling_max.append(np.nan)
-
-#     steps = np.linspace(0, 100*plot_len, plot_len)*1e-5
-#     mu = np.array(rolling_mean)
-#     minv = np.array(rolling_min)
-#     maxv = np.array(rolling_max)
-
-#     plt.figure(figsize=(7, 5))
-#     plt.plot(steps, mu, color=color, linewidth=1.5)
-#     plt.fill_between(steps, minv, maxv, color=color, alpha=0.3)
-#     plt.xlabel(r'Steps $(\times 10^5)$', fontsize=14)
-#     plt.ylabel('Reward', fontsize=16)
-#     plt.xticks(fontsize=16)
-#     plt.yticks(fontsize=16)
-#     plt.grid()
-#     plt.tight_layout()
-#     # plt.legend(fontsize=14)
-#     plt.savefig(os.path.join(save_dir, 'reward_histories_min_max.png'))
-#     plt.show()
+        # Prepare spectra for plotting
+        freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
+        obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
+        desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+        desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+        desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
+        plot_all_results(
+            env, save_dir, run_id, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta,
+            np.array(action_hist), freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect
+        )
 # %%
 def plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir):
     """
@@ -1328,10 +1384,10 @@ if __name__ == '__main__':
     # # # Example usage: plot all reward histories with a rolling window of 100
     # plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
     # plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-    pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
-    freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
-    plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
-'''
+    # pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
+    # freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
+    # plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
+# '''
 # %%
 # if __name__ == '__main__':
 #     import torch.multiprocessing as mp
