@@ -1132,7 +1132,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     # 12. Detuning vs delta theta
     plt.figure(figsize=(10, 6))
     plt.plot(detuning_array*1e-9, np.array(delta_theta)*1e-9/(2*np.pi*env.tR.item()), linewidth=1.5)
-    plt.xlabel(r'Pump detuning (GHz)', fontsize=18)
+    plt.xlabel(r'$\Delta f_{pmp}$ (GHz)', fontsize=18)
     plt.ylabel(r'$f _{\Theta}$ (GHz)', fontsize=18)
     plt.grid()
     plt.xticks(fontsize=18)

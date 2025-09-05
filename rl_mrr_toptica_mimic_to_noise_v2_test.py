@@ -520,13 +520,16 @@ class RL_MRR_Env():
             done = True            
         else:
             done = terminal
+
+        Fdrive_un_comp = self.Fdrive(self.delta_theta/(self.tR), self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain).cpu().numpy()
+        Fdrive_comp = Fdrive_val.cpu().numpy()
             
         
-        return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state, Ewg.cpu().numpy()
+        return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state, Ewg.cpu().numpy(), Fdrive_un_comp, Fdrive_comp
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low',\
                   delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
@@ -553,7 +556,7 @@ config = {
     'delta_omega_min': env.delta_omega_min,  # Minimum detuning in Hz
     'delta_omega_max': env.delta_omega_max,   # Maximum detuning in Hz
     'delta_omega_step': env.delta_omega_step,   # Step size for detuning in
-    'bidirectional': False,  # Whether to use bidirectional detuning
+    'bidirectional': False,  # Whether to use bidirectional GRU
     }
 # %%
 
@@ -584,13 +587,15 @@ achieved = False
 delta_theta = []
 e_wg_hist = []
 det_hist = []
+Fdrive_uncomp_hist = []
+Fdrive_comp_hist = []
 while not done:
 # for idx in tqdm(range(env.init_steps_, int(env.max_steps)), ncols=120):
     # perform random actions
     # try:
         action = agent.choose_action(obs, True)
 
-        next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
+        next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg, f_drive_ucomp, f_drive_comp = env.step(state, action, desired_spectrum_tensor)
         state = next_state
         ecav = ecav_
         ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end)), axis=0)
@@ -619,6 +624,8 @@ import os
 save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
+# %%
+
 # %%
 # find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))
@@ -894,6 +901,243 @@ if idx > int(0.5*env.max_steps):
 plt.show()
 '''
 # %%
+def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, thermal_effect):
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+    import os
+    import numpy as np
+    import fractions
+
+    plt.style.use('physrev.mplstyle')
+    mod_pow = str(env.power[0]).replace('.','_')
+    # Convert tuning steps to time in microseconds
+    time_axis = np.arange(len(pcav_hist)) * 100 * env.tR.item() * 1e6  # microseconds
+
+    # 1. Pcav history
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, 1e3*np.array(pcav_hist), linewidth=1.5)
+    plt.grid()
+    plt.xlabel(r'Time ($\mu$s)', fontsize=16)
+    plt.ylabel(r'$P_{cav}$ (mW)', fontsize=16)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.tight_layout()    
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 2. Acav time evolution
+    plt.figure(figsize=(14,4))
+    plt.imshow(1e3*np.abs(np.array(acav_hist).T)**2, aspect='auto', cmap='jet',
+               extent=[time_axis[0], time_axis[-1], -1e12*env.tR.item()/2, 1e12*env.tR.item()/2])
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=16)
+    cbar.set_label(r'Power $(mW)$', fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.xlabel(r'Time ($\mu$s)', fontsize=14)
+    plt.ylabel(r'$t_R (ps)$', fontsize=14)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 3. Spectrum evolution (FFT of acav_hist)
+    plt.figure(figsize=(14,4))
+    spectrum = np.fft.fftshift(np.fft.fft(np.array(acav_hist).T, axis=0), axes=0)
+    spectrum_dBm = 10*np.log10(np.abs(spectrum)**2)+30
+    spectrum_dBm = np.clip(spectrum_dBm, -60, 10)
+    plt.imshow(spectrum_dBm, aspect='auto', cmap='jet',
+               extent=[time_axis[0], time_axis[-1], env.mu.min().item(), env.mu.max().item()])
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel(r'$\mu$' +'(rel)', fontsize=18)
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=16)
+    cbar.set_label(r'Power $(dBm)$', fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 4. Ewg spectrum evolution
+    plt.figure(figsize=(14,4))
+    e_wg_hist = np.array(e_wg_hist).T
+    ewg_dBm = 10*np.log10(np.abs(e_wg_hist)**2)+30
+    ewg_dBm = np.clip(ewg_dBm, -60, 50)
+    plt.imshow(ewg_dBm, aspect='auto', cmap='jet',
+               extent=[time_axis[0], time_axis[-1], env.mu.min().item(), env.mu.max().item()])
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel(r'$\mu$' +'(rel)', fontsize=18)
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=16)
+    cbar.set_label(r'Power $(dBm)$', fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 5. Reward plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, r_hist)
+    plt.xlabel(r'Time ($\mu$s)', fontsize=16)
+    plt.ylabel('Reward ', fontsize=16)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.grid()
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_rewards_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_rewards_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 8. Detuning array (GHz)
+    detuning_array = np.array(det_hist)
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, detuning_array*1e-9, linewidth=1.5, label='Pump detuning')
+    plt.plot(time_axis, np.array(delta_theta)*1e-9/(2*np.pi*env.tR.item()), linewidth=1.5 , label=r'$f_{\Theta}$')
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel('Freq (GHz)', fontsize=18)
+    plt.grid()
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.legend(fontsize=18)
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 9. Detuning in kappa units
+    kappa = env.un_norm_kappa.item()/(2*np.pi)
+    detuning_kappa = detuning_array / kappa
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, detuning_kappa, linewidth=1.5)
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel(r'Pump detuning ($\kappa$ units)', fontsize=18)
+    plt.grid()
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    ymin, ymax = plt.ylim()
+    yticks = np.arange(np.floor(ymin*2)/2, np.ceil(ymax*2)/2 + 0.01, 0.5)
+    def frac_label(val):
+        frac = fractions.Fraction(val).limit_denominator(8)
+        if frac.numerator == 0:
+            return r"$0$"
+        elif frac.denominator == 1:
+            return rf"${frac.numerator}\,\kappa$"
+        elif frac.numerator == 1:
+            return rf"$\frac{{1}}{{{frac.denominator}}}\,\kappa$"
+        elif frac.numerator == -1:
+            return rf"$-\frac{{1}}{{{frac.denominator}}}\,\kappa$"
+        else:
+            return rf"$\frac{{{frac.numerator}}}{{{frac.denominator}}}\,\kappa$"
+    ytick_labels = [frac_label(y) for y in yticks]
+    plt.yticks(yticks, ytick_labels, fontsize=18)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.svg'), format='svg')
+    plt.show()
+
+    # 10. Pump power
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, env.rescale_power(action_hist[:,0]), linewidth=1.5)
+    plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    plt.ylabel('Pump Power (mW)', fontsize=18)
+    plt.grid()
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # # 11. Delta theta
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(time_axis, np.array(delta_theta)*1e-6/(2*np.pi*env.tR.item()), linewidth=1.5)
+    # plt.xlabel(r'Time ($\mu$s)', fontsize=18)
+    # plt.ylabel(r'$f _{\Theta}$ (MHz)', fontsize=18)
+    # plt.grid()
+    # plt.xticks(fontsize=18)
+    # plt.yticks(fontsize=18)
+    # plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_delta_theta_spec_all_ctrl.png'))
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_delta_theta_spec_all_ctrl.svg'), format='svg')
+    # plt.show()
+
+    # 12. Detuning vs delta theta
+    plt.figure(figsize=(10, 6))
+    plt.plot(detuning_array*1e-9, np.array(delta_theta)*1e-9/(2*np.pi*env.tR.item()), linewidth=1.5)
+    plt.xlabel(r'Pump detuning (GHz)', fontsize=18)
+    plt.ylabel(r'$f _{\Theta}$ (GHz)', fontsize=18)
+    plt.grid()
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_detuning_delta_theta_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_detuning_delta_theta_spec_all_ctrl.svg'), format='svg')
+    plt.show()
+
+    # 6. Obtained vs desired spectrum (mode index)
+    plt.figure(figsize=(14,4))
+    plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), obtained_spectrum,
+               label='Obtained Spectrum',alpha=1, linewidth=1.5)
+    plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum_dBm)),
+               desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
+    plt.xlabel('Rel. Mode no.', fontsize=18)
+    plt.ylabel('Power(dBm)', fontsize=18)
+    plt.grid()
+    plt.ylim(-90,30)
+    plt.xlim(-150, 150)
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.legend(fontsize=18,loc='lower center')
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_modes.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_modes.svg'), format='svg')
+    plt.show()
+
+    # 7. Obtained vs desired spectrum (frequency)
+    plt.figure(figsize=(14,4))
+    plt.vlines(freq, -60*np.ones(len(ecav[-1])), obtained_spectrum,
+               label='Obtained Spectrum',alpha=1, linewidth=1.5)
+    plt.vlines(freq, -60*np.ones(len(desired_spectrum_dBm)),
+               desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
+    plt.xlabel('Freq. (THz)', fontsize=18)
+    plt.ylabel('Power(dBm)', fontsize=18)
+    plt.grid()
+    plt.ylim(-90,30)
+    plt.xlim(freq[220-150], freq[220+150])
+    plt.xticks(fontsize=18, fontweight='bold')
+    plt.yticks(fontsize=18, fontweight='bold')
+    plt.legend(fontsize=18, loc='lower center')
+    plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_freq.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_freq.svg'), format='svg')
+    plt.show()
+    print('All plots saved successfully in', save_dir)
+# %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
     env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low')
@@ -935,83 +1179,63 @@ def run_test_processes(run_id, save_dir):
     score = 0
     done = False
     pcav_hist = []
+    acav_hist = []
+    e_wg_hist = []
     pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=run_id, desc=f'Run {run_id}')
     idx = 0
-    done = False
     delta_theta = []
     det_hist = []
+    terminal = False
     while not done:
-    # for idx in tqdm(range(env.init_steps_, int(env.max_steps)), ncols=120):
-        # perform random actions
-        # try:
-            action = agent.choose_action(obs, True)
-
-            next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
-            state = next_state
-            ecav = ecav_
-            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end)), axis=0)
-            obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
-            obs = obs_ 
-            score += reward
-            curr_pcav = np.sum(np.abs(acav_)**2)
-            pcav_hist.append(curr_pcav)
-            r_hist.append(reward)
-            action_hist.append(action)
-            delta_theta.append(env.delta_theta.item())
-            det_hist.append(env.current_del_omega.item()/(2*np.pi))  # Convert rad/s to GHz
-        
-            idx += env.ctrl_freq
-            pbar.update(env.ctrl_freq)
+        action = agent.choose_action(obs, True)
+        next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
+        state = next_state
+        ecav = ecav_
+        ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10,
+                                   env.power/den,
+                                   5*env.current_del_omega/(env.del_omega_init - env.del_omega_end)), axis=0)
+        obs = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
+        score += reward
+        curr_pcav = np.sum(np.abs(acav_)**2)
+        pcav_hist.append(curr_pcav)
+        acav_hist.append(acav_)
+        e_wg_hist.append(e_wg)
+        r_hist.append(reward)
+        action_hist.append(action)
+        delta_theta.append(env.delta_theta.item())
+        det_hist.append(env.current_del_omega.item()/(2*np.pi))  # Convert rad/s to GHz
+        idx += env.ctrl_freq
+        pbar.update(env.ctrl_freq)
     pbar.close()
 
-    # obtained_spectrum = 10*np.log10(np.abs(e_wg)**2) + 30
-
-    # plt.figure(figsize=(14,4))
-    # plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(ecav[-1])), obtained_spectrum, \
-    #         label='Obtained Spectrum',alpha=1, linewidth=1.5)
-    # plt.vlines(np.arange(-220,221, 1), -60*np.ones(len(desired_spectrum)),\
-    #             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
-    # plt.xlabel('Rel. Mode no.', fontsize=18)
-    # plt.ylabel('Power(dBm)', fontsize=18)
-    # plt.grid()
-    # plt.ylim(-90,50)
-    # # plt.xlim(-150, 150)
-    # plt.xticks(fontsize=18)
-    # plt.yticks(fontsize=18)
-    # plt.legend(fontsize=18,loc='lower center')
-    # plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
-    # # mod_pow = str(env.power[0]).replace('.','_')
-    # plt.tight_layout()
-    # if score>12000:
-    #     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_modes.png'))
-    # plt.show()
-
-    # plt.figure(figsize=(14,4))
-    # plt.vlines(freq, -60*np.ones(len(ecav[-1])), obtained_spectrum, \
-    #         label='Obtained Spectrum',alpha=1, linewidth=1.5)
-    # plt.vlines(freq, -60*np.ones(len(desired_spectrum)),\
-    #             desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
-    # plt.xlabel('Freq. (THz)', fontsize=18)
-    # plt.ylabel('Power(dBm)', fontsize=18)
-    # plt.grid()
-    # plt.ylim(-90,50)
-    # # plt.xlim(freq[220-150], freq[220+150])
-    # plt.xticks(fontsize=18, fontweight='bold')
-    # plt.yticks(fontsize=18, fontweight='bold')
-    # plt.legend(fontsize=18, loc='lower center')
-    # plt.title(env.thermal_effect + ' thermal effect', fontsize=16, fontweight='bold')
-    # mod_pow = str(env.power[0]).replace('.','_')
-    # plt.tight_layout()
-    # if score>12000:
-    #     plt.savefig(os.path.join(save_dir, mod_pow + '_'+ env.thermal_effect + '_ecav_spec_all_ctrl_freq.png'))
-    # plt.show()
     
-    # # if env.step_cntr >= env.max_steps-env.init_steps_-2:
-    # # save the reward history
     if terminal ==False:
         print(f'Run {run_id} completed with score {score} at step {idx}')
-        np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
-        np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), -1*np.array(det_hist) + np.array(delta_theta))
+        freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
+        obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30
+        desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+        desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+        # desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
+        # Call plot_all_results
+        plot_all_results(
+            env=env,
+            save_dir=save_dir,
+            idx=run_id,
+            pcav_hist=pcav_hist,
+            acav_hist=acav_hist,
+            e_wg_hist=e_wg_hist,
+            r_hist=r_hist,
+            det_hist=det_hist,
+            delta_theta=delta_theta,
+            action_hist=np.array(action_hist),
+            freq=freq,
+            ecav=ecav,
+            obtained_spectrum=obtained_spectrum,
+            desired_spectrum_dBm=desired_spectrum_dBm,
+            thermal_effect=env.thermal_effect
+        )
+        # np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
+        # np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), -1*np.array(det_hist) + np.array(delta_theta))
 # %%
 # def run_test_processes(run_id, save_dir, result_queue):
 #     # Re-create environment and agent inside the process
@@ -1328,9 +1552,9 @@ if __name__ == '__main__':
     # # # Example usage: plot all reward histories with a rolling window of 100
     # plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
     # plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-    pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
-    freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
-    plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
+    # pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
+    # freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
+    # plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
 '''
 # %%
 # if __name__ == '__main__':
