@@ -109,7 +109,7 @@ class RL_MRR_Env():
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
         # del_omega_init = self.sim_tensor['domega_init']
-        del_omega_init = 7*self.un_norm_kappa
+        del_omega_init = 5*self.un_norm_kappa
         self.del_omega_init = del_omega_init
         self.current_del_omega = del_omega_init
         # del_omega_end = self.sim_tensor['domega_end']
@@ -492,7 +492,7 @@ class RL_MRR_Env():
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
         # det_delta = action*(2/self.Nt)*(self.del_omega_end - self.del_omega_init)
-        delta_omega = self.rescale_and_quantize(action[1], self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)*(2*np.pi)  # Convert GHz to rad/s
+        delta_omega = self.rescale_and_quantize(action[1], self.delta_omega_min, self.del_omega_init, self.delta_omega_step)*(2*np.pi)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
             del_omega = self.current_del_omega + delta_omega #+ self.delta_theta/(self.tR)
@@ -585,12 +585,12 @@ desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 config = {
-    'input_dim': [env.seq_len, 300+3],
+    'input_dim': [env.seq_len, 300+3+2],
     'n_actions': 2,
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v2',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v3',
     'batch_size': 256,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
