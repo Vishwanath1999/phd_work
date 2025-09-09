@@ -430,7 +430,7 @@ class SACAgent:
         new_state = T.tensor(new_state, dtype=T.float).to(self.actor.device)
         done = T.tensor(done).to(self.actor.device)
 
-        ent_coef = self.log_ent_coef.detach().exp()
+        ent_coef = self.log_ent_coef.detach().exp().clamp(min=1e-8, max=1.0)
         # ent_coef = T.clamp(ent_coef, self.ent_coef_min, self.ent_coef_max)
 
         with T.no_grad():
@@ -467,6 +467,7 @@ class SACAgent:
         ent_coef_loss = -(self.log_ent_coef * (log_probs + self.target_ent_coef).detach()).mean()
         self.ent_coef_optimizer.zero_grad()
         ent_coef_loss.backward()
+        nn.utils.clip_grad_norm_([self.log_ent_coef], 1.0)
         self.ent_coef_optimizer.step()
 
         # Update Target Networks

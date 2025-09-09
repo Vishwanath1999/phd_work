@@ -521,11 +521,11 @@ class RL_MRR_Env():
         else:
             done = terminal
 
-        Fdrive_un_comp = self.Fdrive(self.delta_theta/(self.tR), self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain).cpu().numpy()
-        Fdrive_comp = Fdrive_val.cpu().numpy()
+        # Fdrive_un_comp = self.Fdrive(self.delta_theta/(self.tR), self.t_sim_start+self.step_cntr*self.t_sim_step, self.Ain).cpu().numpy()
+        # Fdrive_comp = Fdrive_val.cpu().numpy()
             
         
-        return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state, Ewg.cpu().numpy(), Fdrive_un_comp, Fdrive_comp
+        return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state, Ewg.cpu().numpy()#, Fdrive_un_comp, Fdrive_comp
 # %%
 # torch seed
 # torch.manual_seed(0)
@@ -587,15 +587,15 @@ achieved = False
 delta_theta = []
 e_wg_hist = []
 det_hist = []
-Fdrive_uncomp_hist = []
-Fdrive_comp_hist = []
+# Fdrive_uncomp_hist = []
+# Fdrive_comp_hist = []
 while not done:
 # for idx in tqdm(range(env.init_steps_, int(env.max_steps)), ncols=120):
     # perform random actions
     # try:
         action = agent.choose_action(obs, True)
 
-        next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg, f_drive_ucomp, f_drive_comp = env.step(state, action, desired_spectrum_tensor)
+        next_state, reward, done, terminal, achieved, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
         state = next_state
         ecav = ecav_
         ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end)), axis=0)
@@ -625,7 +625,56 @@ save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
 # %%
+# …existing code above…
 
+# import matplotlib.animation as animation
+
+# # stack histories into arrays (T time-steps × M modes)
+# f_uncomp = np.array(Fdrive_uncomp_hist)
+# f_comp   = np.array(Fdrive_comp_hist)
+
+# # build frequency axis in THz
+# fpmp      = env.sim_tensor['f_pmp'].item()
+# num_modes = f_uncomp.shape[1]
+# freq      = (fpmp + np.arange(-num_modes//2, num_modes//2 + num_modes%2)*env.FSR.item())*1e-12
+
+# # compute FFT and shift zero-freq to center
+# FFT_uncomp = np.fft.fftshift(np.fft.fft(f_uncomp, axis=1), axes=1)
+# FFT_comp   = np.fft.fftshift(np.fft.fft(f_comp,   axis=1), axes=1)
+
+# # power in dBm = 10·log10(|FFT|²) + 30
+# P_uncomp = 10*np.log10(np.abs(FFT_uncomp)**2 + 1e-12) + 30
+# P_comp   = 10*np.log10(np.abs(FFT_comp)**2   + 1e-12) + 30
+
+# if idx > int(0.5*env.max_steps):
+# # create figure
+#     fig, (ax1, ax2) = plt.subplots(2,1, sharex=True, figsize=(8,6))
+#     line1, = ax1.plot(freq, P_uncomp[0], color='C0')
+#     ax1.set_ylabel('Uncomp. Power (dBm)')
+#     ax1.set_ylim(P_uncomp.min(), P_uncomp.max())
+#     line2, = ax2.plot(freq, P_comp[0], color='C1')
+#     ax2.set_ylabel('Comp. Power (dBm)')
+#     ax2.set_xlabel('Frequency (THz)')
+#     ax2.set_ylim(P_comp.min(), P_comp.max())
+
+#     def update(frame):
+#         line1.set_ydata(P_uncomp[frame])
+#         line2.set_ydata(P_comp[frame])
+#         ax1.set_title(f'Time step {frame+1}/{P_uncomp.shape[0]}')
+#         return line1, line2
+
+#     ani = animation.FuncAnimation(
+#         fig, update,
+#         frames=P_uncomp.shape[0],
+#         interval=100,
+#         blit=True
+#     )
+
+#     # save to mp4 (requires ffmpeg)
+
+#     out_path = os.path.join(save_dir, 'fdrive_evolution_freq.mp4')
+#     ani.save(out_path, fps=10, dpi=200)
+#     print(f'Animation saved to {out_path}')
 # %%
 # find correlation between the obtained pcav and r_hist[:,-1]
 plt.figure(figsize=(10, 6))

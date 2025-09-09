@@ -351,7 +351,7 @@ class RL_MRR_Env():
             Ecav_dBm = 10*torch.log10(torch.abs(Ewg)**2)+30
             Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None)
             Acav_np = Acav.cpu().numpy()
-            curr_pcav = np.sum(np.abs(Acav_np))
+            curr_pcav = np.sum(np.abs(Acav_np)**2)
             
             if idx % self.ctrl_freq == 0:
                 self.ecav_state.append(Ecav_dBm.cpu().numpy())
@@ -575,7 +575,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
                   delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
@@ -591,7 +591,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v2',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v3',
     'batch_size': 256,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
@@ -614,9 +614,12 @@ agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], a
                 eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'], bidir=config['bidirectional'])
 print(agent.actor)
 print(agent.critic_1)
-agent.load_models()
-'''
+# agent.load_models()
+# print('Models loaded...')
+
 # %%
+'''
+agent.load_models()
 state, acav, ecav, pcav = env.reset(10000)
 log_pcav = 10*np.log10(pcav + 1e-12) + 30
 den = env.p_max - env.p_min
@@ -950,6 +953,7 @@ plt.show()
 def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, thermal_effect):
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
     import os
     import numpy as np
     import fractions
@@ -971,7 +975,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()    
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # 2. Acav time evolution
     plt.figure(figsize=(14,4))
@@ -992,7 +996,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_spec_all_ctrl.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # 3. Spectrum evolution (FFT of acav_hist)
     plt.figure(figsize=(14,4))
@@ -1012,7 +1016,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # 4. Ewg spectrum evolution
     plt.figure(figsize=(14,4))
@@ -1032,7 +1036,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # 5. Reward plot
     plt.figure(figsize=(10, 6))
@@ -1046,7 +1050,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_rewards_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_rewards_spec_all_ctrl.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # 8. Detuning array (GHz)
     detuning_array = np.array(det_hist)
@@ -1067,7 +1071,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # 9. Detuning in kappa units
     kappa = env.un_norm_kappa.item()/(2*np.pi)
@@ -1099,7 +1103,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # 10. Pump power
     plt.figure(figsize=(10, 6))
@@ -1113,7 +1117,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # # 11. Delta theta
     # plt.figure(figsize=(10, 6))
@@ -1141,7 +1145,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_detuning_delta_theta_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_detuning_delta_theta_spec_all_ctrl.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # 6. Obtained vs desired spectrum (mode index)
     plt.figure(figsize=(14,4))
@@ -1161,7 +1165,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_modes.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_modes.svg'), format='svg')
-    plt.show()
+    plt.close()
 
     # 7. Obtained vs desired spectrum (frequency)
     plt.figure(figsize=(14,4))
@@ -1181,12 +1185,32 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_freq.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_freq.svg'), format='svg')
-    plt.show()
+    plt.close()
+
+
+    f_det = np.array(detuning_array) * 1e-9  # rad/s to GHz
+    f_theta = np.array(delta_theta) * 1e-9 / (2 * np.pi * env.tR.item())  # rad to GHz
+    p_cav = 1e3 * np.array(pcav_hist)  # W to mW
+
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(f_det, f_theta, p_cav, c=p_cav, cmap='jet', s=15)
+    ax.plot(f_det, f_theta, p_cav, color='blue', alpha=0.7)
+    # surf = ax.plot_trisurf(f_det, f_theta, p_cav, cmap='jet', alpha=0.3, linewidth=0.2, antialiased=True)
+    ax.set_xlabel(r'$\Delta f_{pmp}$ (GHz)', fontsize=14)
+    ax.set_ylabel(r'$f_{\Theta}$ (GHz)', fontsize=14)
+    ax.set_zlabel(r'$P_{cav}$ (mW)', fontsize=14, labelpad=30, rotation=90)
+    ax.view_init(elev=30, azim=135)
+    # ax.set_title(r'3D plot: $f_{\Theta}$ vs $f_{det}$ vs $P_{cav}$', fontsize=16)
+    # plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.svg'), format='svg')
+    plt.close()
     print('All plots saved successfully in', save_dir)
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',
                      delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -1197,7 +1221,7 @@ def run_test_processes(run_id, save_dir):
         'alpha': 3e-4,
         'beta': 3e-4,
         'mem_size': int(1e6),
-        'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v2',
+        'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v3',
         'batch_size': 256,
         'dist': 'beta',
         'train': True,
@@ -1239,7 +1263,7 @@ def run_test_processes(run_id, save_dir):
         next_state, reward, done, terminal, _, acav_, ecav_, e_wg = env.step(state, action, desired_spectrum_tensor)
         state = next_state
         ecav = ecav_
-        curr_pcav = np.sum(np.abs(acav_), keepdims=True)
+        curr_pcav = np.sum(np.abs(acav_)**2, keepdims=True)
         ecav_obs = np.concatenate((ecav_[-1, len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30), axis=0)
         obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
         obs = obs_
@@ -1256,20 +1280,20 @@ def run_test_processes(run_id, save_dir):
         pbar.update(env.ctrl_freq)
     pbar.close()
 
-    if terminal == False:
-        print(f'Run {run_id} completed with score {score} at step {idx}')
-        np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
-        np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), -1*np.array(det_hist) + np.array(delta_theta))
-        # Prepare spectra for plotting
-        freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
-        obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
-        desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
-        desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
-        desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
-        plot_all_results(
-            env, save_dir, run_id, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta,
-            np.array(action_hist), freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect
-        )
+    # if terminal == False:
+    print(f'Run {run_id} completed with score {score} at step {idx}')
+    np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
+    np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
+    # Prepare spectra for plotting
+    freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
+    obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
+    desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+    desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+    desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
+    plot_all_results(
+        env, save_dir, run_id, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta,
+        np.array(action_hist), freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect
+    )
 # %%
 def plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir):
     """
@@ -1358,6 +1382,8 @@ def plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir):
     fig.savefig(os.path.join(save_dir, 'pcav_norm_freq_mean_std.svg'))
     plt.show()
     plt.close(fig)
+
+
     print('Saved pcav_freq_mean_std.*')
 # %%
 import torch.multiprocessing as mp
@@ -1367,7 +1393,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, 'new2')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect, 'new2')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
@@ -1380,13 +1406,13 @@ if __name__ == '__main__':
     for p in processes:
         p.join()
     # get the list of all npy files in the directory
-    # npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
+    npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
     # # # Example usage: plot all reward histories with a rolling window of 100
     # plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
     # plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-    # pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
-    # freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
-    # plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
+    pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
+    freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
+    plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
 # '''
 # %%
 # if __name__ == '__main__':
@@ -1440,7 +1466,7 @@ if __name__ == '__main__':
 #     npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
 # %%
 # import glob
-# save_dir = os.path.join('./results', agent.run_name, 'new')
+# save_dir = os.path.join('./results', agent.run_name, 'new2')
 # pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
 # freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
 # plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)

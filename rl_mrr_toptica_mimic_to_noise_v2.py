@@ -109,7 +109,7 @@ class RL_MRR_Env():
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
         # del_omega_init = self.sim_tensor['domega_init']
-        del_omega_init = 5*self.un_norm_kappa
+        del_omega_init = 7*self.un_norm_kappa
         self.del_omega_init = del_omega_init
         self.current_del_omega = del_omega_init
         # del_omega_end = self.sim_tensor['domega_end']
@@ -350,7 +350,7 @@ class RL_MRR_Env():
             Ecav_dBm = 10*torch.log10(torch.abs(Ewg)**2)+30
             Ecav_dBm = torch.clamp(Ecav_dBm, min=-60, max=None)
             Acav_np = Acav.cpu().numpy()
-            curr_pcav = np.sum(np.abs(Acav_np))
+            curr_pcav = np.sum(np.abs(Acav_np)**2)
             
             if idx % self.ctrl_freq == 0:
                 self.ecav_state.append(Ecav_dBm.cpu().numpy())
@@ -416,36 +416,13 @@ class RL_MRR_Env():
         reward_penalty = 0
         corr = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item()
         
-        # if self.step_cntr-self.init_steps_ >= int(0.4*self.Nt) and self.primary_sidebands_flag == False and corr<0.3:
-        #     prim_corr = torch.corrcoef(torch.stack([self.primary_sidebands, Ecav_dBm]))[0,1].item()
-        #     if prim_corr < 0.7:
-        #         terminal = True
-        #         reward_penalty = -3
-        #         print('Primary Sidebands not formed')
-        #     else:
-        #         reward_penalty = 1
-        #         self.primary_sidebands_flag = True
-        #     # print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
 
         if self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
             terminal = True
             reward_penalty = -5
             print('Did not form soliton ...')
             print('Spectral Corr:', corr)
-        # elif self.step_cntr > self.Nt and achieved == False:
-        #     terminal = True
-        #     reward_penalty = -5
-        #     print('Did not achieve desired spectrum ...')
-        #     print('Spectral Corr:', corr)
-        # if self.step_cntr > int(0.4*self.Nt):
-        #     if self.current_del_omega < self.del_omega_end or self.current_del_omega > self.del_omega_init:
-        #         self.det_out_cntr += self.ctrl_freq
         
-        # if self.det_out_cntr > int(0.2*self.Nt) and corr < 0.25:
-        #     terminal = True
-        #     reward_penalty = -5
-        #     print('Detuning out of range ...')
-        #     print('Current Detuning:', self.current_del_omega.item()/(2*np.pi*1e9), 'GHz')
         return terminal, reward_penalty
     
     @staticmethod
@@ -480,6 +457,23 @@ class RL_MRR_Env():
         return width.item()
     
     def step(self, state, action, desired_spectrum):
+        '''
+        The step function takes the current state and an action as input, and returns the next state, reward, 
+        done flag, terminal flag, achieved flag, Acav_np, ecav_state, and Ewg.
+        Parameters:
+            state (torch.Tensor) : Current state
+            action (np.ndarray) : Action to be taken
+            desired_spectrum (torch.Tensor) : Desired spectrum
+        Returns:
+            next_state (torch.Tensor) : Next state
+            reward (float) : Reward obtained
+            done (bool) : Whether the episode is done
+            terminal (bool) : Whether the episode is terminated
+            achieved (bool) : Whether the desired spectrum is achieved
+            Acav_np (np.ndarray) : Cavity field in numpy array
+            ecav_state (np.ndarray) : Electric field in cavity state
+            Ewg (np.ndarray) : Electric field in waveguide
+        '''
         env.power = self.rescale_power(action[0:1], lower_limit=self.p_min, upper_limit=self.p_max, step_size=0.001)
         # self.env_p_hist.append(env.power[0])
         # if len(self.env_p_hist) > env.seq_len:
@@ -492,7 +486,7 @@ class RL_MRR_Env():
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
         # det_delta = action*(2/self.Nt)*(self.del_omega_end - self.del_omega_init)
-        delta_omega = self.rescale_and_quantize(action[1], self.delta_omega_min, self.del_omega_init, self.delta_omega_step)*(2*np.pi)  # Convert GHz to rad/s
+        delta_omega = self.rescale_and_quantize(action[1], self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)*(2*np.pi)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
             del_omega = self.current_del_omega + delta_omega #+ self.delta_theta/(self.tR)
@@ -585,12 +579,12 @@ desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 config = {
-    'input_dim': [env.seq_len, 300+3+2],
+    'input_dim': [env.seq_len, 300+3],
     'n_actions': 2,
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v3',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v4',
     'batch_size': 256,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
@@ -655,7 +649,7 @@ if config['train']:
             logs['power (W)'] = env.power
             logs['detuning (MHz)'] = env.rescale_and_quantize(action[1], env.delta_omega_min, env.delta_omega_max, env.delta_omega_step)*1e-6
             logs['reward'] = reward  
-            curr_pcav = np.sum(np.abs(acav_),keepdims=True)
+            curr_pcav = np.sum(np.abs(acav_)**2,keepdims=True)
             
             ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30), axis=0)
             obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
@@ -758,7 +752,7 @@ if config['train']:
             wandb.log({"ecav_modes": wandb.Image(fig)})
             plt.close(fig)
 
-            fig = plt.figure(figsize=(7,6))
+            fig = plt.figure(figsize=(10,6))
             plt.plot(det_hist, label=r'$f_{det}$', color='blue', linewidth=1.5)
             plt.plot(to_chaos_hist, label=r'$f_{\theta}$', color='orange', linewidth=1.5)
             plt.xlabel('Time step', fontsize=16)
