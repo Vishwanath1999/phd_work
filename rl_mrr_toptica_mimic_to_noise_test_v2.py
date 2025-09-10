@@ -417,36 +417,19 @@ class RL_MRR_Env():
         reward_penalty = 0
         corr = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item()
         
-        # if self.step_cntr-self.init_steps_ >= int(0.4*self.Nt) and self.primary_sidebands_flag == False and corr<0.3:
-        #     prim_corr = torch.corrcoef(torch.stack([self.primary_sidebands, Ecav_dBm]))[0,1].item()
-        #     if prim_corr < 0.7:
-        #         terminal = True
-        #         reward_penalty = -3
-        #         print('Primary Sidebands not formed')
-        #     else:
-        #         reward_penalty = 1
-        #         self.primary_sidebands_flag = True
-        #     # print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
+        
 
         if self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
             terminal = True
             reward_penalty = -5
             print('Did not form soliton ...')
             print('Spectral Corr:', corr)
-        # elif self.step_cntr > self.Nt and achieved == False:
-        #     terminal = True
-        #     reward_penalty = -5
-        #     print('Did not achieve desired spectrum ...')
-        #     print('Spectral Corr:', corr)
-        # if self.step_cntr > int(0.4*self.Nt):
-        #     if self.current_del_omega < self.del_omega_end or self.current_del_omega > self.del_omega_init:
-        #         self.det_out_cntr += self.ctrl_freq
-        
-        # if self.det_out_cntr > int(0.2*self.Nt) and corr < 0.25:
-        #     terminal = True
-        #     reward_penalty = -5
-        #     print('Detuning out of range ...')
-        #     print('Current Detuning:', self.current_del_omega.item()/(2*np.pi*1e9), 'GHz')
+        elif self.step_cntr > self.Nt and achieved == False:
+            terminal = True
+            reward_penalty = -5
+            print('Did not achieve desired spectrum ...')
+            print('Spectral Corr:', corr)
+ 
         return terminal, reward_penalty
     
     @staticmethod
@@ -575,7 +558,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
                   delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
@@ -953,7 +936,6 @@ plt.show()
 def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, thermal_effect):
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
-    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
     import os
     import numpy as np
     import fractions
@@ -1192,25 +1174,41 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     f_theta = np.array(delta_theta) * 1e-9 / (2 * np.pi * env.tR.item())  # rad to GHz
     p_cav = 1e3 * np.array(pcav_hist)  # W to mW
 
-    fig = plt.figure(figsize=(10, 7))
+    fig = plt.figure(figsize=(14, 14))
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(f_det, f_theta, p_cav, c=p_cav, cmap='jet', s=15)
     ax.plot(f_det, f_theta, p_cav, color='blue', alpha=0.7)
-    # surf = ax.plot_trisurf(f_det, f_theta, p_cav, cmap='jet', alpha=0.3, linewidth=0.2, antialiased=True)
-    ax.set_xlabel(r'$\Delta f_{pmp}$ (GHz)', fontsize=14)
-    ax.set_ylabel(r'$f_{\Theta}$ (GHz)', fontsize=14)
-    ax.set_zlabel(r'$P_{cav}$ (mW)', fontsize=14, labelpad=30, rotation=90)
-    ax.view_init(elev=30, azim=135)
-    # ax.set_title(r'3D plot: $f_{\Theta}$ vs $f_{det}$ vs $P_{cav}$', fontsize=16)
-    # plt.tight_layout()
+    ax.set_xlabel(r'$\Delta f_{pmp}$ (GHz)', fontsize=16)
+    ax.set_ylabel(r'$f_{\Theta}$ (GHz)', fontsize=16)
+    ax.set_zlabel(r'$P_{cav}$ (mW)', fontsize=16, labelpad=-0.7, rotation=90)
+    # set tick size
+    ax.tick_params(axis='both', labelsize=16)
+    # ax.view_init(elev=20, azim=110)
+    plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.svg'), format='svg')
     plt.close()
+
+    # fig = plt.figure(figsize=(14, 10))
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.scatter(f_det, f_theta, p_cav, c=p_cav, cmap='jet', s=15)
+    # ax.plot(f_det, f_theta, p_cav, color='blue', alpha=0.7)
+    # # surf = ax.plot_trisurf(f_det, f_theta, p_cav, cmap='jet', alpha=0.3, linewidth=0.2, antialiased=True)
+    # ax.set_xlabel(r'$\Delta f_{pmp}$ (GHz)', fontsize=14)
+    # ax.set_ylabel(r'$f_{\Theta}$ (GHz)', fontsize=14)
+    # ax.set_zlabel(r'$P_{cav}$ (mW)', fontsize=14, labelpad=60, rotation=90)
+    # ax.view_init(elev=20, azim=110)
+    # # ax.set_title(r'3D plot: $f_{\Theta}$ vs $f_{det}$ vs $P_{cav}$', fontsize=16)
+    # # plt.tight_layout()
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.png'))
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.svg'), format='svg')
+    # plt.close()
     print('All plots saved successfully in', save_dir)
+
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',
                      delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -1280,20 +1278,20 @@ def run_test_processes(run_id, save_dir):
         pbar.update(env.ctrl_freq)
     pbar.close()
 
-    # if terminal == False:
-    print(f'Run {run_id} completed with score {score} at step {idx}')
-    np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
-    np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
-    # Prepare spectra for plotting
-    freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
-    obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
-    desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
-    desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
-    desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
-    plot_all_results(
-        env, save_dir, run_id, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta,
-        np.array(action_hist), freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect
-    )
+    if terminal == False:
+        print(f'Run {run_id} completed with score {score} at step {idx}')
+        np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
+        np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
+        # Prepare spectra for plotting
+        freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
+        obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
+        desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+        desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+        desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
+        plot_all_results(
+            env, save_dir, run_id, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta,
+            np.array(action_hist), freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect
+        )
 # %%
 def plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir):
     """
