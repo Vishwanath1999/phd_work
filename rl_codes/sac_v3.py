@@ -467,7 +467,7 @@ class SACAgent:
         ent_coef_loss = -(self.log_ent_coef * (log_probs + self.target_ent_coef).detach()).mean()
         self.ent_coef_optimizer.zero_grad()
         ent_coef_loss.backward()
-        nn.utils.clip_grad_norm_([self.log_ent_coef], 1.0)
+        # nn.utils.clip_grad_norm_([self.log_ent_coef], 1.0)
         self.ent_coef_optimizer.step()
 
         # Update Target Networks
