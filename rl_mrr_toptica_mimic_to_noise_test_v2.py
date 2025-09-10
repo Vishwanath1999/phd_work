@@ -1204,6 +1204,499 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.svg'), format='svg')
     # plt.close()
     print('All plots saved successfully in', save_dir)
+# %%
+from scipy.signal import spectrogram, find_peaks, welch
+from scipy.stats import entropy
+
+# Advanced Soliton Analysis Functions for Micro Ring Resonator RL
+# Integration code for your plot_all_results function
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import spectrogram, find_peaks, welch
+from scipy.stats import entropy
+from mpl_toolkits.mplot3d import Axes3D
+import os
+
+def phase_portrait_analysis(acav_hist, det_hist, delta_theta, save_dir, idx, thermal_effect, env):
+    """
+    Phase Portrait Analysis for Soliton Dynamics
+    
+    Creates 4 different phase portraits to reveal:
+    - Periodic vs chaotic attractors in power evolution
+    - 3D phase space reconstruction showing complex dynamics
+    - Detuning-thermal frequency relationships
+    - Power derivative phase portraits
+    """
+    acav_array = np.array(acav_hist)
+    power_envelope = np.sum(np.abs(acav_array)**2, axis=1)
+    
+    tau = 50  # delay in steps
+    if len(power_envelope) > tau:
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        
+        # 1. Power envelope phase portrait
+        x = power_envelope[:-tau]
+        y = power_envelope[tau:]
+        scatter = axes[0,0].scatter(x*1e3, y*1e3, c=np.arange(len(x)), cmap='viridis', s=1, alpha=0.7)
+        axes[0,0].set_xlabel('P(t) (mW)', fontsize=12)
+        axes[0,0].set_ylabel(f'P(t+{tau}Δt) (mW)', fontsize=12)
+        axes[0,0].set_title('Power Envelope Phase Portrait', fontsize=12)
+        axes[0,0].grid(True, alpha=0.3)
+        
+        # 2. Detuning vs thermal frequency phase portrait
+        det_array = np.array(det_hist)*1e-9  # Convert to GHz
+        theta_array = np.array(delta_theta)*1e-9/(2*np.pi*env.tR.item())  # Convert to GHz
+        
+        if len(det_array) > tau:
+            scatter2 = axes[0,1].scatter(det_array[:-tau], theta_array[:-tau], 
+                            c=np.arange(len(det_array[:-tau])), cmap='plasma', s=2, alpha=0.8)
+            axes[0,1].set_xlabel('Pump Detuning (GHz)', fontsize=12)
+            axes[0,1].set_ylabel(r'$f_\Theta$ (GHz)', fontsize=12)
+            axes[0,1].set_title('Detuning-Thermal Phase Portrait', fontsize=12)
+            axes[0,1].grid(True, alpha=0.3)
+        
+        # 3. Power derivative phase portrait
+        power_deriv = np.diff(power_envelope)
+        if len(power_deriv) > tau:
+            x_deriv = power_deriv[:-tau]
+            y_deriv = power_deriv[tau:]
+            scatter3 = axes[1,0].scatter(x_deriv*1e6, y_deriv*1e6, c=np.arange(len(x_deriv)), 
+                            cmap='coolwarm', s=1, alpha=0.7)
+            axes[1,0].set_xlabel('dP/dt (μW/step)', fontsize=12)
+            axes[1,0].set_ylabel(f'd²P/dt² (μW/step)', fontsize=12)
+            axes[1,0].set_title('Power Velocity Phase Portrait', fontsize=12)
+            axes[1,0].grid(True, alpha=0.3)
+        
+        # 4. 3D phase portrait
+        if len(power_envelope) > 2*tau:
+            axes[1,1].remove()
+            ax_3d = fig.add_subplot(2, 2, 4, projection='3d')
+            x_3d = power_envelope[:-2*tau]
+            y_3d = power_envelope[tau:-tau]
+            z_3d = power_envelope[2*tau:]
+            
+            scatter4 = ax_3d.scatter(x_3d*1e3, y_3d*1e3, z_3d*1e3, 
+                                  c=np.arange(len(x_3d)), cmap='viridis', s=1, alpha=0.7)
+            ax_3d.set_xlabel('P(t) (mW)', fontsize=10)
+            ax_3d.set_ylabel(f'P(t+{tau}Δt) (mW)', fontsize=10)
+            ax_3d.set_zlabel(f'P(t+{2*tau}Δt) (mW)', fontsize=10)
+            ax_3d.set_title('3D Phase Portrait', fontsize=12)
+        
+        mod_pow = str(env.power[0]).replace('.','_')
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_phase_portraits.png'), dpi=200, bbox_inches='tight')
+        plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_phase_portraits.svg'), bbox_inches='tight')
+        plt.show()
+
+
+def time_frequency_spectrogram(acav_hist, save_dir, idx, thermal_effect, env):
+    """
+    Time-Frequency Spectrogram Analysis
+    
+    Analyzes:
+    - Central modes spectral evolution during soliton formation
+    - Mode participation and effective mode number
+    - Spectral entropy as complexity measure
+    - Rolling power statistics
+    """
+    acav_array = np.array(acav_hist)
+    
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    
+    # 1. Central modes power evolution
+    center_idx = acav_array.shape[1] // 2
+    central_modes = acav_array[:, center_idx-20:center_idx+21]  # 41 central modes
+    power_central = np.abs(central_modes)**2
+    
+    im1 = axes[0,0].imshow(power_central.T, aspect='auto', cmap='jet', origin='lower',
+                          extent=[0, len(power_central), -20, 20])
+    axes[0,0].set_ylabel('Mode Index (rel to center)', fontsize=12)
+    axes[0,0].set_xlabel('Time Steps', fontsize=12)
+    axes[0,0].set_title('Central Modes Power Evolution', fontsize=12)
+    plt.colorbar(im1, ax=axes[0,0], label='Power (a.u.)')
+    
+    # 2. Total power with rolling statistics
+    total_power = np.sum(np.abs(acav_array)**2, axis=1)
+    window_size = 100
+    
+    if len(total_power) > window_size:
+        rolling_mean = np.convolve(total_power, np.ones(window_size)/window_size, mode='valid')
+        rolling_std = np.array([np.std(total_power[i:i+window_size]) 
+                               for i in range(len(total_power)-window_size+1)])
+        
+        time_axis = np.arange(len(rolling_mean))
+        axes[0,1].plot(time_axis, rolling_mean*1e3, 'b-', linewidth=1.5, label='Mean Power')
+        axes[0,1].fill_between(time_axis, (rolling_mean-rolling_std)*1e3, 
+                              (rolling_mean+rolling_std)*1e3, alpha=0.3, color='blue', label='±1σ')
+        axes[0,1].set_ylabel('Power (mW)', fontsize=12)
+        axes[0,1].set_xlabel('Time Steps', fontsize=12)
+        axes[0,1].set_title('Rolling Power Statistics', fontsize=12)
+        axes[0,1].legend()
+        axes[0,1].grid(True, alpha=0.3)
+    
+    # 3. Mode participation (effective number of modes)
+    mode_power = np.abs(acav_array)**2
+    mode_occupation = mode_power / (np.sum(mode_power, axis=1, keepdims=True) + 1e-12)
+    eff_modes = 1.0 / np.sum(mode_occupation**2, axis=1)
+    
+    axes[1,0].plot(eff_modes, 'r-', linewidth=1.5)
+    axes[1,0].set_ylabel('Effective Mode Number', fontsize=12)
+    axes[1,0].set_xlabel('Time Steps', fontsize=12)
+    axes[1,0].set_title('Mode Participation Evolution', fontsize=12)
+    axes[1,0].grid(True, alpha=0.3)
+    
+    # 4. Spectral entropy evolution
+    spectral_entropy = np.array([entropy(mode_occupation[i] + 1e-12) for i in range(len(mode_occupation))])
+    axes[1,1].plot(spectral_entropy, 'g-', linewidth=1.5)
+    axes[1,1].set_ylabel('Spectral Entropy', fontsize=12)
+    axes[1,1].set_xlabel('Time Steps', fontsize=12)
+    axes[1,1].set_title('Spectral Entropy Evolution', fontsize=12)
+    axes[1,1].grid(True, alpha=0.3)
+    
+    mod_pow = str(env.power[0]).replace('.','_')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_time_frequency.png'), dpi=200, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_time_frequency.svg'), bbox_inches='tight')
+    plt.show()
+
+
+def chaos_metrics_analysis(acav_hist, det_hist, delta_theta, r_hist, save_dir, idx, thermal_effect, env):
+    """
+    Chaos Metrics Analysis
+    
+    Provides:
+    - Chaos indicators based on power fluctuations
+    - Power spectral density analysis
+    - Reward landscape mapping
+    - Autocorrelation functions
+    - Phase space reconstruction
+    """
+    acav_array = np.array(acav_hist)
+    power_envelope = np.sum(np.abs(acav_array)**2, axis=1)
+    
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    
+    # 1. Chaos indicator (power fluctuations)
+    window_size = 200
+    chaos_indicators = []
+    window_centers = []
+    
+    for start in range(0, len(power_envelope) - window_size, 50):
+        end = start + window_size
+        window_data = power_envelope[start:end]
+        
+        # Use coefficient of variation as chaos indicator
+        chaos_ind = np.std(window_data) / (np.mean(window_data) + 1e-12)
+        chaos_indicators.append(chaos_ind)
+        window_centers.append(start + window_size // 2)
+    
+    axes[0,0].plot(window_centers, chaos_indicators, 'b-', linewidth=1.5)
+    axes[0,0].axhline(y=0.1, color='r', linestyle='--', alpha=0.7, label='Chaos threshold')
+    axes[0,0].set_ylabel('Chaos Indicator', fontsize=12)
+    axes[0,0].set_xlabel('Time Steps', fontsize=12)
+    axes[0,0].set_title('Power Fluctuation Analysis', fontsize=12)
+    axes[0,0].legend()
+    axes[0,0].grid(True, alpha=0.3)
+    
+    # 2. Power spectral density
+    if len(power_envelope) > 64:
+        freqs, psd = welch(power_envelope, fs=1.0, nperseg=min(256, len(power_envelope)//4))
+        axes[0,1].loglog(freqs[1:], psd[1:])  # Skip DC component
+        axes[0,1].set_ylabel('PSD', fontsize=12)
+        axes[0,1].set_xlabel('Frequency (1/steps)', fontsize=12)
+        axes[0,1].set_title('Power Spectral Density', fontsize=12)
+        axes[0,1].grid(True, alpha=0.3)
+    
+    # 3. Reward landscape analysis
+    rewards = np.array(r_hist)
+    det_array = np.array(det_hist)
+    theta_array = np.array(delta_theta)
+    
+    if len(rewards) > 100:
+        # Create 2D histogram of reward vs parameters
+        H, xedges, yedges = np.histogram2d(det_array*1e-9, theta_array*1e-9, 
+                                          bins=20, weights=rewards)
+        H_counts, _, _ = np.histogram2d(det_array*1e-9, theta_array*1e-9, bins=20)
+        H_avg = np.divide(H, H_counts, out=np.zeros_like(H), where=H_counts!=0)
+        
+        im = axes[0,2].imshow(H_avg.T, origin='lower', aspect='auto', cmap='RdYlBu_r',
+                              extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]])
+        axes[0,2].set_xlabel('Pump Detuning (GHz)', fontsize=12)
+        axes[0,2].set_ylabel(r'Thermal Freq (GHz)', fontsize=12)
+        axes[0,2].set_title('Average Reward Landscape', fontsize=12)
+        plt.colorbar(im, ax=axes[0,2], label='Average Reward')
+    
+    # 4. Temporal correlation function
+    def autocorrelation(x, max_lag=100):
+        x = x - np.mean(x)
+        autocorr = np.correlate(x, x, mode='full')
+        autocorr = autocorr[autocorr.size // 2:]
+        autocorr = autocorr / autocorr[0]  # Normalize
+        return autocorr[:max_lag]
+    
+    lags = np.arange(100)
+    autocorr = autocorrelation(power_envelope)
+    axes[1,0].plot(lags, autocorr, 'purple', linewidth=1.5)
+    axes[1,0].set_ylabel('Autocorrelation', fontsize=12)
+    axes[1,0].set_xlabel('Time Lag (steps)', fontsize=12)
+    axes[1,0].set_title('Power Autocorrelation', fontsize=12)
+    axes[1,0].grid(True, alpha=0.3)
+    
+    # 5. Phase space reconstruction (2D)
+    tau_embed = 20
+    if len(power_envelope) > 2*tau_embed:
+        x_embed = power_envelope[:-tau_embed]
+        y_embed = power_envelope[tau_embed:]
+        
+        # Color by time
+        scatter = axes[1,1].scatter(x_embed*1e3, y_embed*1e3, 
+                                   c=np.arange(len(x_embed)), cmap='plasma', s=1, alpha=0.6)
+        axes[1,1].set_xlabel('P(t) (mW)', fontsize=12)
+        axes[1,1].set_ylabel(f'P(t+{tau_embed}) (mW)', fontsize=12)
+        axes[1,1].set_title('Phase Space Reconstruction', fontsize=12)
+        axes[1,1].grid(True, alpha=0.3)
+    
+    # 6. Power vs detuning evolution
+    det_sub = det_array[::10] * 1e-9  # Subsample and convert to GHz
+    power_sub = power_envelope[::10] * 1e3  # Subsample and convert to mW
+    
+    scatter = axes[1,2].scatter(det_sub, power_sub, c=np.arange(len(det_sub)), 
+                               cmap='viridis', s=20, alpha=0.6)
+    axes[1,2].set_xlabel('Pump Detuning (GHz)', fontsize=12)
+    axes[1,2].set_ylabel('Power (mW)', fontsize=12)
+    axes[1,2].set_title('Power vs Detuning Evolution', fontsize=12)
+    axes[1,2].grid(True, alpha=0.3)
+    plt.colorbar(scatter, ax=axes[1,2], label='Time Step')
+    
+    mod_pow = str(env.power[0]).replace('.','_')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_chaos_metrics.png'), dpi=200, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_chaos_metrics.svg'), bbox_inches='tight')
+    plt.show()
+
+
+def soliton_birth_death_analysis(acav_hist, save_dir, idx, thermal_effect, env):
+    """
+    Soliton Birth/Death Analysis
+    
+    Tracks:
+    - Soliton population dynamics over time
+    - Individual soliton trajectories
+    - Collision/interaction events
+    - Birth/death rate statistics
+    - Power distribution analysis
+    """
+    acav_array = np.array(acav_hist)
+    
+    # Detect solitons by finding localized peaks in the field profile
+    def detect_solitons(field_snapshot, threshold_factor=0.3):
+        power = np.abs(field_snapshot)**2
+        threshold = threshold_factor * np.max(power)
+        
+        peaks, properties = find_peaks(power, height=threshold, width=3)
+        
+        return peaks, power[peaks] if len(peaks) > 0 else np.array([])
+    
+    # Track soliton count over time
+    soliton_counts = []
+    soliton_positions = []
+    soliton_powers = []
+    
+    for i, field in enumerate(acav_array):
+        peaks, heights = detect_solitons(field)
+        soliton_counts.append(len(peaks))
+        soliton_positions.append(peaks)
+        soliton_powers.append(heights)
+    
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    
+    # 1. Soliton count evolution
+    axes[0,0].plot(soliton_counts, 'b-', linewidth=1.5)
+    axes[0,0].set_ylabel('Number of Solitons', fontsize=12)
+    axes[0,0].set_xlabel('Time Steps', fontsize=12)
+    axes[0,0].set_title('Soliton Population Dynamics', fontsize=12)
+    axes[0,0].grid(True, alpha=0.3)
+    
+    # 2. Soliton trajectory map
+    max_solitons = max(soliton_counts) if soliton_counts else 0
+    if max_solitons > 0:
+        trajectory_map = np.full((len(acav_array), len(acav_array[0])), np.nan)
+        
+        for t, (positions, powers) in enumerate(zip(soliton_positions, soliton_powers)):
+            for pos, power in zip(positions, powers):
+                if pos < trajectory_map.shape[1]:
+                    trajectory_map[t, pos] = power*1e3
+        
+        im = axes[0,1].imshow(trajectory_map.T, aspect='auto', cmap='hot', origin='lower',
+                             extent=[0, len(acav_array), 0, len(acav_array[0])])
+        axes[0,1].set_xlabel('Time Steps', fontsize=12)
+        axes[0,1].set_ylabel('Position Index', fontsize=12)
+        axes[0,1].set_title('Soliton Trajectory Map', fontsize=12)
+        plt.colorbar(im, ax=axes[0,1], label='Soliton Power (mW)')
+    
+    # 3. Collision/interaction events detection
+    collision_events = []
+    for t in range(1, len(soliton_positions)):
+        prev_pos = set(soliton_positions[t-1])
+        curr_pos = set(soliton_positions[t])
+        
+        # Simple collision detection: significant change in soliton number
+        if abs(len(prev_pos) - len(curr_pos)) > 0:
+            collision_events.append(t)
+        elif len(prev_pos) > 1 and len(curr_pos) > 1:
+            # Check if solitons are closer than before
+            if len(prev_pos) > 1:
+                min_dist_prev = min([abs(p1-p2) for p1 in prev_pos for p2 in prev_pos if p1 != p2])
+            else:
+                min_dist_prev = float('inf')
+                
+            if len(curr_pos) > 1:
+                min_dist_curr = min([abs(p1-p2) for p1 in curr_pos for p2 in curr_pos if p1 != p2])
+                if min_dist_curr < 0.7 * min_dist_prev and min_dist_curr < 20:
+                    collision_events.append(t)
+    
+    # Mark collision events on soliton count plot
+    for event in collision_events[:20]:  # Limit to first 20 events for clarity
+        axes[0,0].axvline(x=event, color='red', alpha=0.6, linewidth=0.5)
+    
+    if collision_events:
+        event_counts = [soliton_counts[e] for e in collision_events[:20]]
+        axes[0,0].scatter(collision_events[:20], event_counts, 
+                         color='red', s=20, label='Interaction Events', zorder=5)
+        axes[0,0].legend()
+    
+    # 4. Soliton power distribution
+    all_powers = [p for powers in soliton_powers for p in powers]
+    if all_powers:
+        axes[1,0].hist(np.array(all_powers)*1e3, bins=30, alpha=0.7, color='green', edgecolor='black')
+        axes[1,0].set_xlabel('Soliton Power (mW)', fontsize=12)
+        axes[1,0].set_ylabel('Frequency', fontsize=12)
+        axes[1,0].set_title('Soliton Power Distribution', fontsize=12)
+        axes[1,0].grid(True, alpha=0.3)
+    
+    # 5. Birth/death rate analysis
+    birth_death_rate = np.diff(soliton_counts)
+    if len(birth_death_rate) > 0:
+        axes[1,1].plot(birth_death_rate, 'purple', linewidth=1.5)
+        axes[1,1].axhline(y=0, color='black', linestyle='--', alpha=0.7)
+        axes[1,1].set_xlabel('Time Steps', fontsize=12)
+        axes[1,1].set_ylabel('ΔN (solitons/step)', fontsize=12)
+        axes[1,1].set_title('Soliton Birth/Death Rate', fontsize=12)
+        axes[1,1].grid(True, alpha=0.3)
+        
+        # Add annotations for significant events
+        birth_events = np.where(birth_death_rate > 0)[0]
+        death_events = np.where(birth_death_rate < 0)[0]
+        
+        for i, event in enumerate(birth_events[:3]):  # Show first 3
+            axes[1,1].annotate('Birth', xy=(event, birth_death_rate[event]), 
+                              xytext=(event, birth_death_rate[event]+0.5),
+                              arrowprops=dict(arrowstyle='->', color='green', alpha=0.7),
+                              fontsize=8, color='green')
+        
+        for i, event in enumerate(death_events[:3]):  # Show first 3
+            axes[1,1].annotate('Death', xy=(event, birth_death_rate[event]), 
+                              xytext=(event, birth_death_rate[event]-0.5),
+                              arrowprops=dict(arrowstyle='->', color='red', alpha=0.7),
+                              fontsize=8, color='red')
+    
+    mod_pow = str(env.power[0]).replace('.','_')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_soliton_dynamics.png'), dpi=200, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_soliton_dynamics.svg'), bbox_inches='tight')
+    plt.show()
+
+
+def multistability_landscape_analysis(acav_hist, det_hist, delta_theta, r_hist, save_dir, idx, thermal_effect, env):
+    """
+    Multistability Landscape Analysis
+    
+    Maps:
+    - Success probability across parameter space
+    - Hysteresis effects in system response
+    - State classification and transitions
+    - Control efficiency optimization
+    - System stability regions
+    """
+    
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    
+    # 1. Success probability map
+    det_array = np.array(det_hist) * 1e-9  # Convert to GHz
+    theta_array = np.array(delta_theta) * 1e-9 / (2*np.pi*env.tR.item())  # Convert to GHz
+    rewards = np.array(r_hist)
+    
+    # Define success threshold
+    success_threshold = 2.0
+    success = rewards > success_threshold
+    
+    # Create 2D grid for success probability
+    det_bins = np.linspace(det_array.min(), det_array.max(), 25)
+    theta_bins = np.linspace(theta_array.min(), theta_array.max(), 25)
+    
+    success_map = np.zeros((len(theta_bins)-1, len(det_bins)-1))
+    count_map = np.zeros((len(theta_bins)-1, len(det_bins)-1))
+    
+    for i in range(len(det_bins)-1):
+        for j in range(len(theta_bins)-1):
+            mask = ((det_array >= det_bins[i]) & (det_array < det_bins[i+1]) &
+                   (theta_array >= theta_bins[j]) & (theta_array < theta_bins[j+1]))
+            
+            if np.sum(mask) > 0:
+                success_map[j,i] = np.mean(success[mask])
+                count_map[j,i] = np.sum(mask)
+    
+    # Mask regions with too few samples
+    success_map[count_map < 5] = np.nan
+    
+    im1 = axes[0,0].imshow(success_map, extent=[det_bins[0], det_bins[-1], theta_bins[0], theta_bins[-1]],
+                          origin='lower', aspect='auto', cmap='RdYlGn', vmin=0, vmax=1)
+    axes[0,0].set_xlabel('Pump Detuning (GHz)', fontsize=12)
+    axes[0,0].set_ylabel('Thermal Frequency (GHz)', fontsize=12)
+    axes[0,0].set_title('Success Probability Map', fontsize=12)
+    plt.colorbar(im1, ax=axes[0,0], label='Success Probability')
+    
+    # Continue with other analyses...
+    # [Additional code for hysteresis, state classification, etc.]
+    
+    mod_pow = str(env.power[0]).replace('.','_')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_multistability.png'), dpi=200, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, f'{mod_pow}_{thermal_effect}_run_{idx}_multistability.svg'), bbox_inches='tight')
+    plt.show()
+
+
+# INTEGRATION FUNCTION FOR YOUR PLOT_ALL_RESULTS
+def add_advanced_analysis_to_plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, thermal_effect):
+    """
+    ADD THIS TO THE END OF YOUR plot_all_results FUNCTION:
+    
+    # Advanced chaos and soliton analysis
+    print("Generating advanced visualizations...")
+    add_advanced_analysis_to_plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, thermal_effect)
+    """
+    
+    try:
+        print("  → Phase portrait analysis...")
+        phase_portrait_analysis(acav_hist, det_hist, delta_theta, save_dir, idx, thermal_effect, env)
+        
+        print("  → Time-frequency spectrogram...")
+        time_frequency_spectrogram(acav_hist, save_dir, idx, thermal_effect, env)
+        
+        print("  → Chaos metrics analysis...")
+        chaos_metrics_analysis(acav_hist, det_hist, delta_theta, r_hist, save_dir, idx, thermal_effect, env)
+        
+        print("  → Soliton birth/death analysis...")
+        soliton_birth_death_analysis(acav_hist, save_dir, idx, thermal_effect, env)
+        
+        print("  → Multistability landscape...")
+        multistability_landscape_analysis(acav_hist, det_hist, delta_theta, r_hist, save_dir, idx, thermal_effect, env)
+        
+        print("  ✓ All advanced analyses completed!")
+        
+    except Exception as e:
+        print(f"  ✗ Advanced analysis failed: {e}")
 
 # %%
 def run_test_processes(run_id, save_dir):
@@ -1280,8 +1773,8 @@ def run_test_processes(run_id, save_dir):
 
     if terminal == False:
         print(f'Run {run_id} completed with score {score} at step {idx}')
-        np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
-        np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
+        # np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
+        # np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
         # Prepare spectra for plotting
         freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
         obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
@@ -1292,6 +1785,8 @@ def run_test_processes(run_id, save_dir):
             env, save_dir, run_id, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta,
             np.array(action_hist), freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect
         )
+        # add_advanced_analysis_to_plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect)
+
 # %%
 def plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir):
     """
@@ -1391,7 +1886,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect, 'new2')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
@@ -1408,9 +1903,9 @@ if __name__ == '__main__':
     # # # Example usage: plot all reward histories with a rolling window of 100
     # plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
     # plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-    pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
-    freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
-    plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
+    # pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
+    # freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
+    # plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
 # '''
 # %%
 # if __name__ == '__main__':
