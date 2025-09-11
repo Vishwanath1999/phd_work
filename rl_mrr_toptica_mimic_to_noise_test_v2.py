@@ -420,15 +420,15 @@ class RL_MRR_Env():
         
 
         if self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
-            terminal = True
+            # terminal = True
             reward_penalty = -5
-            print('Did not form soliton ...')
-            print('Spectral Corr:', corr)
+            # print('Did not form soliton ...')
+            # print('Spectral Corr:', corr)
         elif self.step_cntr > self.Nt and achieved == False:
-            terminal = True
+            # terminal = True
             reward_penalty = -5
-            print('Did not achieve desired spectrum ...')
-            print('Spectral Corr:', corr)
+            # print('Did not achieve desired spectrum ...')
+            # print('Spectral Corr:', corr)
  
         return terminal, reward_penalty
     
@@ -558,7 +558,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low',\
                   delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
@@ -1089,7 +1089,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
 
     # 10. Pump power
     plt.figure(figsize=(10, 6))
-    plt.plot(time_axis, env.rescale_power(action_hist[:,0]), linewidth=1.5)
+    plt.plot(time_axis, env.rescale_power(action_hist[:,0], env.p_max, env.p_min), linewidth=1.5)
     plt.xlabel(r'Time ($\mu$s)', fontsize=18)
     plt.ylabel('Pump Power (mW)', fontsize=18)
     plt.grid()
@@ -1701,7 +1701,7 @@ def add_advanced_analysis_to_plot_all_results(env, save_dir, idx, pcav_hist, aca
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low',
                      delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -1712,7 +1712,7 @@ def run_test_processes(run_id, save_dir):
         'alpha': 3e-4,
         'beta': 3e-4,
         'mem_size': int(1e6),
-        'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v3',
+        'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v4',
         'batch_size': 256,
         'dist': 'beta',
         'train': True,
