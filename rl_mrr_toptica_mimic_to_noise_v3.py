@@ -587,7 +587,14 @@ class RL_MRR_Env():
             
         
         return self.next_state, reward, done, terminal, achieved, Acav_np, self.ecav_state, Ewg.cpu().numpy()
-
+# %%
+# a fuction that takes in env as argument and calculates the manitude of difference between curr_del_omega and del_omega_init and del_omega_end
+def calc_detuning_distance(env, scale=1):
+    # distance to initial detuning
+    span = env.del_omega_init - env.del_omega_end
+    d_low = (env.current_del_omega - env.del_omega_end)/span
+    d_high = (env.del_omega_init - env.current_del_omega)/span
+    return np.array([scale*d_low.item(), scale*d_high.item()])
 # %%
 # torch seed
 # torch.manual_seed(0)
@@ -658,8 +665,8 @@ if config['train']:
         state, acav, ecav, pcav = env.reset(10000)
         logs['pump power'] = env.power
         log_pcav = 10*np.log10(pcav + 1e-12) + 30
-        bounds = [0, env.delta_omega_init.item()-env.del_omega_end.item()]
-        obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis]),axis=1)
+        bounds = calc_detuning_distance(env, scale=5)
+        obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis], bounds**np.ones((env.seq_len,1))),axis=1)
         pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=i, desc='Episode %d' % i)
         acav_hist = []
         ecav_hist = []
@@ -675,7 +682,8 @@ if config['train']:
             logs['reward'] = reward  
             curr_pcav = np.sum(np.abs(acav_)**2,keepdims=True)
             
-            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30), axis=0)
+            bounds = calc_detuning_distance(env, scale=5)
+            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30, bounds), axis=0)
             obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
             obs = obs_   
             agent.remember(obs, action, reward, obs_, terminal)

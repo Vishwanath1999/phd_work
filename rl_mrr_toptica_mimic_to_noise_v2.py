@@ -362,7 +362,7 @@ class RL_MRR_Env():
         self.primary_sidebands_flag = False
         self.ecav_state = np.array(self.ecav_state)
 
-        # self.env_p_hist = []
+        self.env_p_hist = []
 
         self.det_out_cntr = 0
         
@@ -475,9 +475,9 @@ class RL_MRR_Env():
             Ewg (np.ndarray) : Electric field in waveguide
         '''
         env.power = self.rescale_power(action[0:1], lower_limit=self.p_min, upper_limit=self.p_max, step_size=0.001)
-        # self.env_p_hist.append(env.power[0])
-        # if len(self.env_p_hist) > env.seq_len:
-        #     self.env_p_hist.pop(0)
+        self.env_p_hist.append(env.power[0])
+        if len(self.env_p_hist) > env.seq_len:
+            self.env_p_hist.pop(0)
         
         Ppmp = torch.tensor(env.power, dtype=torch.float64)
         
@@ -544,8 +544,8 @@ class RL_MRR_Env():
         # penalize for high variance in power
         # if len(self.env_p_hist) > 1:
         #     power_var = np.std(self.env_p_hist)
-        #     if power_var > 0.001:
-        #         reward -= 2*len(self.env_p_hist) * (power_var - 0.001)
+        #     if power_var > 0.01:
+        #         reward -= 2*len(self.env_p_hist) * (power_var - 0.01)
         
         if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50 or torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() > 0.9:
             achieved = True
