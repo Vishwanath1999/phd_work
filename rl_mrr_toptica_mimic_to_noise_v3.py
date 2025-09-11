@@ -94,6 +94,7 @@ class RL_MRR_Env():
         self.alpha = alpha
 
         self.soft_clamp_ = soft_clamp
+        self.thermal_effect = thermal_effect
         self.tau0 = 100e-9
         if thermal_effect == 'low':
             self.xi = -1.2e4
@@ -509,7 +510,7 @@ class RL_MRR_Env():
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
         # det_delta = action*(2/self.Nt)*(self.del_omega_end - self.del_omega_init)
-        delta_omega = self.rescale_and_quantize(action[1], self.delta_omega_min, self.del_omega_init, self.delta_omega_step)*(2*np.pi)  # Convert GHz to rad/s
+        delta_omega = self.rescale_and_quantize(action[1], self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)*(2*np.pi)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
             del_omega = self.current_del_omega + delta_omega #+ self.delta_theta/(self.tR)
@@ -614,7 +615,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v3',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v4',
     'batch_size': 256,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
