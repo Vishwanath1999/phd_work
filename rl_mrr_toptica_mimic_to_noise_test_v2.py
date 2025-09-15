@@ -420,15 +420,15 @@ class RL_MRR_Env():
         
 
         if self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
-            # terminal = True
+            terminal = True
             reward_penalty = -5
-            # print('Did not form soliton ...')
-            # print('Spectral Corr:', corr)
+            print('Did not form soliton ...')
+            print('Spectral Corr:', corr)
         elif self.step_cntr > self.Nt and achieved == False:
-            # terminal = True
+            terminal = True
             reward_penalty = -5
-            # print('Did not achieve desired spectrum ...')
-            # print('Spectral Corr:', corr)
+            print('Did not achieve desired spectrum ...')
+            print('Spectral Corr:', corr)
  
         return terminal, reward_penalty
     
@@ -558,7 +558,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low',\
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
                   delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
@@ -1091,10 +1091,11 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.figure(figsize=(10, 6))
     plt.plot(time_axis, env.rescale_power(action_hist[:,0], env.p_max, env.p_min), linewidth=1.5)
     plt.xlabel(r'Time ($\mu$s)', fontsize=18)
-    plt.ylabel('Pump Power (mW)', fontsize=18)
+    plt.ylabel('Pump Power (W)', fontsize=18)
     plt.grid()
     plt.xticks(fontsize=18)
     plt.yticks(fontsize=18)
+    plt.ylim(env.p_min-0.1, env.p_max+0.1)
     plt.title(f'{thermal_effect} thermal effect', fontsize=16, fontweight='bold')
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.png'))
@@ -1701,7 +1702,7 @@ def add_advanced_analysis_to_plot_all_results(env, save_dir, idx, pcav_hist, aca
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low',
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',
                      delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -1712,7 +1713,7 @@ def run_test_processes(run_id, save_dir):
         'alpha': 3e-4,
         'beta': 3e-4,
         'mem_size': int(1e6),
-        'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v4',
+        'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v3',
         'batch_size': 256,
         'dist': 'beta',
         'train': True,
@@ -1773,8 +1774,8 @@ def run_test_processes(run_id, save_dir):
 
     if terminal == False:
         print(f'Run {run_id} completed with score {score} at step {idx}')
-        # np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
-        # np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
+        np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
+        np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
         # Prepare spectra for plotting
         freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
         obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
@@ -1903,9 +1904,9 @@ if __name__ == '__main__':
     # # # Example usage: plot all reward histories with a rolling window of 100
     # plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
     # plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-    # pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
-    # freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
-    # plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
+    pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
+    freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
+    plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
 # '''
 # %%
 # if __name__ == '__main__':
