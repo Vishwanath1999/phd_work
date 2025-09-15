@@ -366,7 +366,7 @@ def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton
     # SaveData(saved_data,name)
 
 # %%
-def rescale_power(power, lower_limit=0.05, upper_limit=0.4, step_size=0.001):
+def rescale_power(power, lower_limit=0.05, upper_limit=0.2, step_size=0.001):
         """
         Rescale input power in [-1, 1] to [lower_limit, upper_limit] and quantize to step_size.
 
@@ -387,7 +387,7 @@ def rescale_power(power, lower_limit=0.05, upper_limit=0.4, step_size=0.001):
         quantized_value = np.round(value / step_size) * step_size
         return quantized_value
 # %%
-def rescale_and_quantize(action, lower_limit=-500e6, upper_limit=500e6, step_size=1e4):
+def rescale_and_quantize(action, lower_limit=-1e6, upper_limit=1e6, step_size=1e4):
     """
     Rescale input in [-1, 1] to [lower_limit, upper_limit] and quantize to step_size.
 
@@ -609,6 +609,19 @@ def fitness(spec):
     mse = np.mean((spec - desired_spectrum_dBm)**2)
     return mse
 
+@staticmethod
+def spectral_width_dbm_torch(y_dbm: torch.Tensor, threshold: float = -60, center_idx: int = None, norm: int = 300) -> torch.Tensor:
+    """
+    Counts how many points in y_dbm (PyTorch tensor) are above threshold (dBm), excluding the central mode,
+    and divides by norm (default 300).
+    """
+    if center_idx is None:
+        center_idx = y_dbm.shape[0] // 2
+    mask = (y_dbm > threshold)
+    mask[center_idx] = False  # exclude central mode
+    width = torch.sum(mask.float()) / norm
+    return width.item()
+
 # write a fitness function using correlation coefficient
 def fitness_correlation(spec, num_step):
     """
@@ -618,7 +631,8 @@ def fitness_correlation(spec, num_step):
     # desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
     # desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)  # Clip to avoid extreme values
     correlation = np.corrcoef(spec, desired_spectrum_dBm)[0, 1]
-
+    # center_idx = len(spec) // 2
+    # mask = y
     return 4*(1-correlation) + num_step
 
 def objective(X):
@@ -647,7 +661,7 @@ run_name = 'GA_LLE_optim_corr_coeff_num_steps'
 
 algorithm_param = {
     'max_num_iteration': 40,
-    'population_size': 40,
+    'population_size': 10,
     'mutation_probability': 0.25,
     'elit_ratio': 0.01,
     'crossover_probability': 0.5,
@@ -664,7 +678,7 @@ if __name__ == "__main__":
         dimension=3,
         variable_boundaries=varbound,
         parallel=True,
-        n_processes=15,
+        n_processes=10,
         progress_bar=True,
         algorithm_parameters=algorithm_param,
         # random_seed=seed,
