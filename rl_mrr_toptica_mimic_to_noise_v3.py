@@ -110,16 +110,15 @@ class RL_MRR_Env():
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
         # del_omega_init = self.sim_tensor['domega_init']
-        del_omega_init = 7*self.un_norm_kappa
+        del_omega_init = 14*self.un_norm_kappa
         self.del_omega_init = del_omega_init
         self.current_del_omega = del_omega_init
         # del_omega_end = self.sim_tensor['domega_end']
-        del_omega_end = -5*self.un_norm_kappa
+        del_omega_end = -14*self.un_norm_kappa
         self.del_omega_end = del_omega_end
 
         # del_omega_stop = self.sim_tensor['domega_stop']
-        del_omega_stop = -5*self.un_norm_kappa
-        self.del_omega_stop = del_omega_stop
+        self.del_omega_stop = self.del_omega_end-2*self.un_norm_kappa
         ind_sweep = self.sim_tensor['ind_pump_sweep'] 
         t_end = self.sim_tensor['Tscan']
         Dint = self.disp_tensor['Dint_new']
@@ -166,11 +165,11 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(4e5)
+        self.max_steps = int(8e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
-        self.Nt = np.round(t_ramp/tr/dt).astype(int)
+        self.Nt = self.max_steps#np.round(t_ramp/tr/dt).astype(int)
 
         self.del_omega_0 = del_omega_init + (1/self.Nt)*(del_omega_end - del_omega_init)
 
@@ -417,36 +416,13 @@ class RL_MRR_Env():
         reward_penalty = 0
         corr = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item()
         
-        # if self.step_cntr-self.init_steps_ >= int(0.4*self.Nt) and self.primary_sidebands_flag == False and corr<0.3:
-        #     prim_corr = torch.corrcoef(torch.stack([self.primary_sidebands, Ecav_dBm]))[0,1].item()
-        #     if prim_corr < 0.7:
-        #         terminal = True
-        #         reward_penalty = -3
-        #         print('Primary Sidebands not formed')
-        #     else:
-        #         reward_penalty = 1
-        #         self.primary_sidebands_flag = True
-        #     # print('Corr:',np.corrcoef(self.primary_sidebands, Ecav_dBm.cpu().numpy())[0,1])
 
-        if self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
+        if self.step_cntr-self.init_steps_ >= int(0.65*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
             terminal = True
             reward_penalty = -5
             print('Did not form soliton ...')
             print('Spectral Corr:', corr)
-        # elif self.step_cntr > self.Nt and achieved == False:
-        #     terminal = True
-        #     reward_penalty = -5
-        #     print('Did not achieve desired spectrum ...')
-        #     print('Spectral Corr:', corr)
-        # if self.step_cntr > int(0.4*self.Nt):
-        #     if self.current_del_omega < self.del_omega_end or self.current_del_omega > self.del_omega_init:
-        #         self.det_out_cntr += self.ctrl_freq
-        
-        # if self.det_out_cntr > int(0.2*self.Nt) and corr < 0.25:
-        #     terminal = True
-        #     reward_penalty = -5
-        #     print('Detuning out of range ...')
-        #     print('Current Detuning:', self.current_del_omega.item()/(2*np.pi*1e9), 'GHz')
+
         return terminal, reward_penalty
     
     @staticmethod
@@ -600,7 +576,7 @@ def calc_detuning_distance(env, scale=1):
 # torch seed
 # torch.manual_seed(0)
 env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
-                  delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
+                  delta_omega_min=-5e6, delta_omega_max=5e6, delta_omega_step=5e4, soft_clamp=False, softness=0.5)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -635,7 +611,8 @@ config = {
 from rl_codes.sac_v3 import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
-                eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'], bidir=config['bidirectional'])
+                eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'], bidir=config['bidirectional'],
+                beta_steps=int(4e5))
 print(agent.actor)
 print(agent.critic_1)
 
