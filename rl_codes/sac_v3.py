@@ -360,7 +360,8 @@ class CriticNetwork(nn.Module):
 
 class SACAgent:
     def __init__(self, input_dim, n_actions, run_name, alpha=3e-4, beta=3e-4, gamma=0.99, tau=0.005, 
-                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False, fc_dim=128, use_per=False, bidir=False, use_priv=False):
+                 mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False, fc_dim=128, use_per=False, bidir=False, use_priv=False,
+                 beta_steps=int(2e5)):
         self.input_dim = input_dim
         self.n_actions = n_actions
         self.run_name = run_name
@@ -379,7 +380,7 @@ class SACAgent:
             self.beta_start = 0.4
             self.beta = self.beta_start
             self.beta_end = 1.0
-            self.beta_steps = int(2e5)
+            self.beta_steps = beta_steps
             self.beta_inc = (self.beta_end - self.beta_start) / self.beta_steps
 
         self.actor = Actor(input_dim, lr=alpha, output_dim=n_actions, fc_dim=fc_dim, max_action=max_action, dist=dist,name=run_name+'_actor', bidir=bidir)

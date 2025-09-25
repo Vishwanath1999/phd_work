@@ -109,16 +109,16 @@ class RL_MRR_Env():
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
         # del_omega_init = self.sim_tensor['domega_init']
-        del_omega_init = 7*self.un_norm_kappa
+        del_omega_init = 14*self.un_norm_kappa
         self.del_omega_init = del_omega_init
         self.current_del_omega = del_omega_init
         # del_omega_end = self.sim_tensor['domega_end']
-        del_omega_end = -5*self.un_norm_kappa
+        del_omega_end = -14*self.un_norm_kappa
         self.del_omega_end = del_omega_end
 
         # del_omega_stop = self.sim_tensor['domega_stop']
-        del_omega_stop = -5*self.un_norm_kappa
-        self.del_omega_stop = del_omega_stop
+        del_omega_stop = -14*self.un_norm_kappa
+        self.del_omega_stop = self.del_omega_end-2*self.un_norm_kappa
         ind_sweep = self.sim_tensor['ind_pump_sweep'] 
         t_end = self.sim_tensor['Tscan']
         Dint = self.disp_tensor['Dint_new']
@@ -568,8 +568,8 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
-                  delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
+                  delta_omega_min=-5e6, delta_omega_max=5e6, delta_omega_step=5e4, soft_clamp=False, softness=0.5)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -584,7 +584,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v4',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high',
     'batch_size': 256,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
@@ -776,11 +776,11 @@ if config['train']:
 # '''
 # %%
 import matplotlib.pyplot as plt
-plt.style.use('physics.mplstyle')
+plt.style.use('phyrev.mplstyle')
 # Plot episode scores
 if config['train']:
     plt.figure(figsize=(10, 6))
-    plt.plot(np.array(scores)/(4e3), color='blue', linewidth=1.5)
+    plt.plot(np.array(scores)/(env.max_steps), color='blue', linewidth=1.5)
     plt.xlabel('Episode no.', fontsize=16)
     plt.ylabel('Score', fontsize=16)
     plt.title('Episode Scores Normalized by length', fontsize=16)

@@ -139,9 +139,9 @@ alpha = k0+kext
 
 un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
-del_omega_init = 4*un_norm_kappa#sim_tensor['domega_init']
-del_omega_end = -3*un_norm_kappa#sim_tensor['domega_end']
-del_omega_stop = -4*un_norm_kappa#sim_tensor['domega_stop']
+del_omega_init = 10*un_norm_kappa#sim_tensor['domega_init']
+del_omega_end = -5*un_norm_kappa#sim_tensor['domega_end']
+del_omega_stop = -5*un_norm_kappa#sim_tensor['domega_stop']
 ind_sweep = sim_tensor['ind_pump_sweep'] 
 t_end = sim_tensor['Tscan']
 Dint = disp_tensor['Dint_new']#[0]
@@ -169,7 +169,7 @@ t_end = t_end*tR
 t_ramp = t_end
 
 # %%
-Nt = torch.round(t_ramp/tR/dt)[0].int()
+Nt = torch.tensor([400000], dtype=torch.int)[0]#int(4e5)#torch.round(t_ramp/tR/dt)[0].int()
 theta = torch.linspace(0, 2*torch.pi, len(mu), device=device)
 del_omega_tot = torch.abs(del_omega_end)+torch.abs(del_omega_init)
 del_omega_perc = -1*torch.sign(del_omega_end+del_omega_init)*(torch.abs(del_omega_end+del_omega_init)/2)/del_omega_tot
@@ -320,7 +320,7 @@ def ssfm_step(A0: torch.Tensor, it: int, alpha: torch.Tensor, Dint_shift: torch.
     err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
     raise ValueError(f"Convergence Error: {err}")
 
-def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton='moderate'):
+def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton='high'):
     param = dict()
     param['tol'] = 1e-3
     param['max_iter'] = max_iter
@@ -490,7 +490,7 @@ def reset_saved_data():
 # spec_dBm = 10 * np.log10(np.abs(Ecav)**2) + 30
 # spec_dBm = np.clip(spec_dBm, -60, 10)  # Clip to avoid extreme values
 # %%
-def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate', save_dir=None):
+def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='high', save_dir=None):
     """
     Main function to run the LLE simulation with given parameters.
     
@@ -543,7 +543,7 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate', save_
     if progress_bar:
 
         plt.figure(figsize=(14, 4))
-        plt.imshow(Acav_abs, aspect='auto', cmap='jet', extent=[0,len(Awg), -tR.item()*1e12/2, tR.item()*1e12/2], origin='lower')
+        plt.imshow(Acav_abs, aspect='auto', cmap='jet', extent=[0,Nt*tR.item()*1e6, -tR.item()*1e12/2, tR.item()*1e12/2], origin='lower')
         cbar = plt.colorbar()
         cbar.ax.tick_params(labelsize=16)
         cbar.set_label(r'Power $(mW)$', fontsize=16)
@@ -552,7 +552,7 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate', save_
         formatter.set_powerlimits((-1, 1))
         plt.gca().xaxis.set_major_formatter(formatter)
         plt.title(ton + ' themal effect', fontsize=18)
-        plt.xlabel('Tuning Steps', fontsize=18)
+        plt.xlabel(r'Time $(\mu s)$', fontsize=18)
         plt.ylabel(r'$t_R$ (ps)', fontsize=18)
         plt.tight_layout()
         plt.xticks(fontsize=16)
@@ -567,12 +567,14 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate', save_
         plt.close()
 
         plt.figure(figsize=(10,6))
-        plt.plot(np_dict['delta_theta']*FSR.item()/(2*torch.pi), linewidth=1.5)
-        plt.xlabel('Tuning Steps', fontsize=16)
-        plt.ylabel(r'$\f _{\Theta}$', fontsize=16)
+        x = np.linspace(0, Nt*tR.item()*1e6, len(np_dict['detuning']))
+        plt.plot(x,np_dict['delta_theta']*FSR.item()/(2*torch.pi*1e9), linewidth=1.5)
+        plt.xlabel(r'Time $(\mu s)$', fontsize=16)
+        plt.ylabel(r'$f _{\Theta}$ (GHz)', fontsize=16)
         plt.xticks(fontsize=16)
         plt.title(ton + ' thermal effect', fontsize=18)
         plt.yticks(fontsize=16)
+        plt.gca().xaxis.set_major_formatter(formatter)
         plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
         # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.png')
         # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.svg', format='svg')
@@ -584,11 +586,12 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='moderate', save_
 
         # plot pcav
         plt.figure(figsize=(10,6))
-        plt.plot(np.sum(Acav_abs, axis=0), linewidth=1.5)
-        plt.xlabel('Tuning Steps', fontsize=16)
+        plt.plot(x,np.sum(Acav_abs, axis=0), linewidth=1.5)
+        plt.xlabel(r'Time $(\mu s)$', fontsize=16)
         plt.ylabel(r'$P_{cav}$ (mW)', fontsize=16)
         plt.xticks(fontsize=16)
         plt.yticks(fontsize=16)
+        plt.gca().xaxis.set_major_formatter(formatter)
         plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
         # plt.savefig('./GA_results_corr_coeff/pcav_ton_' + ton + '.png')
         # plt.savefig('./GA_results_corr_coeff/pcav_ton_' + ton + '.svg', format='svg')
@@ -657,7 +660,7 @@ plt.style.use('physrev.mplstyle')
 # Define desired_spectrum_tensor as a global variable for use in other functions
 desired_spectrum_tensor = torch.tensor(desired_spectrum_dBm, dtype=torch.float64, device=device)
 
-run_name = 'GA_LLE_optim_corr_coeff_num_steps'
+run_name = 'GA_LLE_optim_corr_coeff_num_steps_strong'
 
 algorithm_param = {
     'max_num_iteration': 40,
@@ -697,19 +700,24 @@ if __name__ == "__main__":
         f.write(f"Best Fitness: {best_fit}\n")
     
     # run the simulation with best params
+    # -0.77720861  0.82866072
     fine = best_var[0]
     dwell_steps = 100  # Convert to integer for dwell steps
     domega = initialize_del_omega_all(fine, dwell_steps, Nt.item(), del_omega_init, del_omega_end, rescale_and_quantize, device).cpu().numpy()
     domega = domega[0]/(2*np.pi*1e9)  # Convert to GHz for plotting
+    x = np.linspace(0, Nt*tR.item()*1e6, len(domega))
     plt.figure(figsize=(10,6))
-    plt.plot(domega*1e-9, linewidth=1.5)
-    plt.xlabel('Tuning Steps', fontsize=16)
+    plt.plot(x,domega*1e-9, linewidth=1.5)
+    plt.xlabel(r'Time $(\mu s)$', fontsize=16)
     plt.ylabel('Detuning (GHz)', fontsize=16)
     plt.title('Detuning vs Tuning Steps', fontsize=18, fontweight='bold')
     plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
     plt.tight_layout()
+    # make xticks in scientific notation
+    plt.gca().xaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    plt.gca().xaxis.get_major_formatter().set_scientific(True)
     plt.savefig(os.path.join(save_dir, 'detuning_vs_tuning_steps.png'))
     plt.savefig(os.path.join(save_dir, 'detuning_vs_tuning_steps.svg'), format='svg')
     plt.show()
@@ -740,51 +748,57 @@ if __name__ == "__main__":
         plt.savefig(os.path.join(save_dir, f'optimized_spectrum_{ton_case}.svg'), format='svg')
         plt.show()
 # %%
-# plt.style.use('physrev.mplstyle')
-# run_name = 'GA_LLE_optim_corr_coeff_to_un_norm'
-# save_dir = os.path.join(os.getcwd(), run_name)
+plt.style.use('physrev.mplstyle')
+run_name = 'GA_LLE_optim_corr_coeff_num_steps'
+save_dir = os.path.join(os.getcwd(), run_name)
 # run the simulation with best params
 # load the best solution from file
-# best_var = np.loadtxt('best_solution.txt', max_rows=1, delimiter=',')
-# best_fit = np.loadtxt('best_solution.txt', skiprows=1)# Extract the best parameters
-# ''' 1.14629165e-01  4.01778341e+02 -2.65872045e-01
-# 0.73412415 162.37567429  -0.31298985
-# fine = 1.14629165e-01
-# dwell_steps = 100#int(4.01778341e+02)  # Convert to integer for dwell steps
-# pump_power = -2.65872045e-01  # Assuming the third parameter is the pump power
-# print(f"Running simulation with fine={rescale_and_quantize(fine)/(2*np.pi*1e9)} GHz, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)} W")
-# # spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
-# # plot the spectrum against the desired spectrum
-# desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
-# desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
-# desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)  # Clip to avoid extreme values
+with open(os.path.join(save_dir, 'best_solution.txt'), 'r') as f:
+    line = f.readline()
+    # Extract the part inside the brackets
+    import re
+    numbers = re.findall(r"[-+]?\d*\.\d+|\d+", line)
+    best_var = np.array([float(num) for num in numbers])
+# -0.77720861  0.82866072
+# -0.40729269  0.95622334
+fine = -0.90779669#best_var[0]
+dwell_steps = 100
+pump_power = 0.59589996#best_var[1]  # Assuming the third parameter is the pump power
+print(f"Running simulation with fine={rescale_and_quantize(fine)/(2*np.pi*1e9)} GHz, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)} W")
+# spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
+# plot the spectrum against the desired spectrum
+desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
+desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
+desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)  # Clip to avoid extreme values
 
-# for ton_case in ['weak', 'moderate', 'strong']:
-#     print(f"Running simulation with ton='{ton_case}', fine={rescale_and_quantize(fine)/(2*np.pi*1e9)} GHz, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)} W")
-#     spec, num_steps = LLE(fine, dwell_steps, pump_power, progress_bar=True, ton=ton_case, save_dir=save_dir)
-#     print(f"Number of steps taken to achieve soliton: {num_steps}")
-#     plt.figure(figsize=(14, 4))
-#     plt.vlines(np.arange(-220,221,1),-60*np.ones(441), spec, label='Optimized Spectrum', color='blue')
-#     plt.vlines(np.arange(-220,221,1),-60*np.ones(441), desired_spectrum_dBm, label='Desired Spectrum', color='red', alpha=0.5)
-#     plt.title('Optimized Spectrum vs Desired Spectrum', fontsize=18, fontweight='bold')
-#     plt.xlabel('Mode no.', fontsize=16)
-#     plt.ylabel('Power (dBm)', fontsize=16)
-#     plt.xticks(fontsize=16)
-#     plt.yticks(fontsize=16)
-#     plt.ylim(-70, 30)
-#     plt.xlim(-180,180)
-#     plt.legend(fontsize=14, loc='lower center')
-#     plt.grid()
-#     plt.tight_layout()
-#     # plt.savefig(f'./GA_results_corr_coeff/optimized_spectrum_{ton_case}.png')
-#     # plt.savefig(f'./GA_results_corr_coeff/optimized_spectrum_{ton_case}.svg', format='svg')
-#     plt.savefig(os.path.join(save_dir, f'optimized_spectrum_{ton_case}.png'))
-#     plt.savefig(os.path.join(save_dir, f'optimized_spectrum_{ton_case}.svg'), format='svg')
-#     plt.show()
-#     # print the mse 
-#     mse = fitness(spec)
-#     print(f"Mean Squared Error (MSE) for {ton_case} thermal effect: {mse:.4f}")
+for ton_case in ['strong']:#'weak', 'moderate', 
+    print(f"Running simulation with ton='{ton_case}', fine={rescale_and_quantize(fine)/(2*np.pi*1e9)} GHz, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)} W")
+    spec, num_steps = LLE(fine, dwell_steps, pump_power, progress_bar=True, ton=ton_case, save_dir=save_dir)
+    print(f"Number of steps taken to achieve soliton: {num_steps}")
+    plt.figure(figsize=(14, 4))
+    plt.vlines(np.arange(-220,221,1),-60*np.ones(441), spec, label='Optimized Spectrum', color='blue')
+    plt.vlines(np.arange(-220,221,1),-60*np.ones(441), desired_spectrum_dBm, label='Desired Spectrum', color='red', alpha=0.5)
+    plt.title('Optimized Spectrum vs Desired Spectrum', fontsize=18, fontweight='bold')
+    plt.xlabel('Mode no.', fontsize=16)
+    plt.ylabel('Power (dBm)', fontsize=16)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.ylim(-70, 30)
+    plt.xlim(-180,180)
+    plt.legend(fontsize=14, loc='lower center')
+    plt.grid()
+    plt.tight_layout()
+    # plt.savefig(f'./GA_results_corr_coeff/optimized_spectrum_{ton_case}.png')
+    # plt.savefig(f'./GA_results_corr_coeff/optimized_spectrum_{ton_case}.svg', format='svg')
+    plt.savefig(os.path.join(save_dir, f'optimized_spectrum_{ton_case}.png'))
+    plt.savefig(os.path.join(save_dir, f'optimized_spectrum_{ton_case}.svg'), format='svg')
+    plt.show()
+    # print the mse 
+    mse = fitness(spec)
+    print(f"Mean Squared Error (MSE) for {ton_case} thermal effect: {mse:.4f}")
+
 # %%
+'''
 # import the population fitness mat file
 # population_fitness = loadmat('./GA_results/population_fitness.mat')['fitness']
 # def plot_population_fitness_from_mat(population_fitness, save_path=None):

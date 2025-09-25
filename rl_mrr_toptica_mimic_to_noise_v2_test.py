@@ -545,7 +545,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v3',
     'batch_size': 128,
     'dist': 'beta', # 'beta' or 'normal'
     'train':False,
@@ -621,7 +621,7 @@ print('Test score %.2f' % score, 'at step %d' % idx)
 import os
 
 # Create save directory if not exists
-save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
+save_dir = os.path.join('./results', agent.run_name, env.thermal_effect, 'new3')
 os.makedirs(save_dir, exist_ok=True)
 plt.style.use('physrev.mplstyle')
 # %%
@@ -1199,7 +1199,7 @@ def run_test_processes(run_id, save_dir):
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v3',
     'batch_size': 256,
     'dist': 'beta', # 'beta' or 'normal'
     'train':False,
@@ -1584,7 +1584,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, 'new2')
+    save_dir = os.path.join('./results', agent.run_name, 'new3')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
@@ -1604,7 +1604,7 @@ if __name__ == '__main__':
     # pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
     # freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
     # plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
-'''
+# '''
 # %%
 # if __name__ == '__main__':
 #     import torch.multiprocessing as mp
