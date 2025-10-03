@@ -165,7 +165,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(8e5)
+        self.max_steps = int(4e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -576,7 +576,7 @@ def calc_detuning_distance(env, scale=1):
 # torch seed
 # torch.manual_seed(0)
 env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
-                  delta_omega_min=-5e6, delta_omega_max=5e6, delta_omega_step=5e4, soft_clamp=False, softness=0.5)
+                  delta_omega_min=-5e6, delta_omega_max=5e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -591,7 +591,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_mod_v4',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high',
     'batch_size': 256,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
@@ -605,6 +605,8 @@ config = {
     'bidirectional': False,  # Whether to use bidirectional detuning
     'env_soft_clamp': env.soft_clamp_,  # Whether to use soft clamping in the environment
     'softness': env.softness,  # Softness parameter for soft clamping
+    'alpha_per': 0.7,  # Initial value of alpha for PER
+    'beta_per': int(4e5),   # Initial value of beta for PER
     }
 # %%
 
@@ -612,7 +614,7 @@ from rl_codes.sac_v3 import SACAgent
 agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], alpha=config['alpha'], beta=config['beta'],
                 mem_size=config['mem_size'], batch_size=config['batch_size'], dist=config['dist'], run_name=config['run_name'],
                 eval_mode=not(torch.cuda.is_available()), fc_dim=config['fc_dim'], use_per=config['use_per'], bidir=config['bidirectional'],
-                beta_steps=int(4e5))
+                beta_steps=config['beta_per'], alpha_per=config['alpha_per'])
 print(agent.actor)
 print(agent.critic_1)
 
@@ -643,8 +645,8 @@ if config['train']:
         state, acav, ecav, pcav = env.reset(10000)
         logs['pump power'] = env.power
         log_pcav = 10*np.log10(pcav + 1e-12) + 30
-        bounds = calc_detuning_distance(env, scale=5)
-        obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis], bounds**np.ones((env.seq_len,1))),axis=1)
+        bounds = calc_detuning_distance(env, scale=3)
+        obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis], bounds*np.ones((env.seq_len,1))),axis=1)
         pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=i, desc='Episode %d' % i)
         acav_hist = []
         ecav_hist = []
@@ -660,8 +662,8 @@ if config['train']:
             logs['reward'] = reward  
             curr_pcav = np.sum(np.abs(acav_)**2,keepdims=True)
             
-            bounds = calc_detuning_distance(env, scale=5)
-            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 5*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30, bounds), axis=0)
+            bounds = calc_detuning_distance(env, scale=3)
+            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 3*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30, bounds), axis=0)
             obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
             obs = obs_   
             agent.remember(obs, action, reward, obs_, terminal)

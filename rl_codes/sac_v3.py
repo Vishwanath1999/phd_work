@@ -42,6 +42,14 @@ class ReplayBuffer():
 
 class PrioritizedReplayBuffer:
     def __init__(self, max_size, input_shape, n_actions, alpha=0.6):
+        '''
+        Initialize the Prioritized Replay Buffer.
+        Args:
+            max_size (int): Maximum size of the replay buffer.
+            input_shape (Tuple[int]): Shape of the input state.
+            n_actions (int): Number of actions.
+            alpha (float): Priority exponent, determines how much prioritization is used (0 - no prioritization, 1 - full prioritization).
+        '''
         self.mem_size = max_size
         self.mem_cntr = 0
         self.alpha = alpha
@@ -361,7 +369,7 @@ class CriticNetwork(nn.Module):
 class SACAgent:
     def __init__(self, input_dim, n_actions, run_name, alpha=3e-4, beta=3e-4, gamma=0.99, tau=0.005, 
                  mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False, fc_dim=128, use_per=False, bidir=False, use_priv=False,
-                 beta_steps=int(2e5)):
+                 beta_steps=int(2e5), alpha_per=0.75):
         self.input_dim = input_dim
         self.n_actions = n_actions
         self.run_name = run_name
@@ -400,9 +408,9 @@ class SACAgent:
         if eval_mode == False:
             if use_per:
                 if use_priv:
-                    self.memory = AssymPrioritizedReplayBuffer(mem_size, input_dim, n_actions, priv_dim=1, alpha=0.6)
+                    self.memory = AssymPrioritizedReplayBuffer(mem_size, input_dim, n_actions, priv_dim=1, alpha=alpha_per)
                 else:
-                    self.memory = PrioritizedReplayBuffer(mem_size, input_dim, n_actions)
+                    self.memory = PrioritizedReplayBuffer(mem_size, input_dim, n_actions, alpha=alpha_per)
             else:
                 self.memory = ReplayBuffer(input_dim, n_actions, max_size=mem_size)
     
