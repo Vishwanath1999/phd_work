@@ -110,11 +110,10 @@ class RL_MRR_Env():
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
         # del_omega_init = self.sim_tensor['domega_init']
-        del_omega_init = 14*self.un_norm_kappa
+        del_omega_init = 10*self.un_norm_kappa
         self.del_omega_init = del_omega_init
         self.current_del_omega = del_omega_init
-        # del_omega_end = self.sim_tensor['domega_end']
-        del_omega_end = -14*self.un_norm_kappa
+        del_omega_end = -10*self.un_norm_kappa
         self.del_omega_end = del_omega_end
 
         # del_omega_stop = self.sim_tensor['domega_stop']
@@ -454,7 +453,88 @@ class RL_MRR_Env():
         mask = (y_dbm > threshold)
         mask[center_idx] = False  # exclude central mode
         width = torch.sum(mask.float()) / norm
+        if torch.isnan(width):
+            print('Width is NaN')
+            return 0.0
         return width.item()
+
+    # @staticmethod
+    # def spectral_symm_torch(y_dbm: torch.Tensor, threshold: float = -58) -> float:
+    #     """
+    #     Computes the Pearson correlation coefficient between the left and right thresholded spectrum parts,
+    #     excluding the central mode, using torch.corrcoef.
+    #     """
+    #     center_idx = y_dbm.shape[0] // 2
+    #     mask = (y_dbm > threshold)
+    #     if torch.sum(mask).item() <= 1:
+    #         return 0.0
+    #     left_modes = mask[:center_idx].float()*y_dbm[:center_idx]
+    #     right_modes = mask[center_idx+1:].float()*y_dbm[center_idx+1:]
+    #     right_modes_flipped = torch.flip(right_modes, dims=[0])
+    #     min_len = min(left_modes.shape[0], right_modes_flipped.shape[0])
+    #     if min_len < 2:
+    #         return 0.0
+    #     left_modes = left_modes[-min_len:]
+    #     right_modes_flipped = right_modes_flipped[:min_len]
+    #     # Stack into 2xN to compute correlation matrix
+    #     stacked = torch.stack([left_modes, right_modes_flipped], dim=0)
+    #     corr_mat = torch.corrcoef(stacked)
+    #     corr = corr_mat[0, 1]
+    #     # check if corr is nan
+    #     if torch.isnan(corr):
+    #         print('Symm is NaN')
+    #         return 0.0
+    #     return corr.item()
+    @staticmethod
+    def spectral_symm_torch(spectrum: torch.Tensor, floor: float=-55) -> float:
+        n = spectrum.size(0)
+        center_idx = n // 2
+
+        left = spectrum[:center_idx]
+        right = spectrum[center_idx+1:]
+
+        left_filtered = left[left > floor]
+        right_filtered = right[right > floor]
+
+        min_len = min(len(left_filtered), len(right_filtered))
+        if min_len <2:
+            return 0.0  # Return zero if no correlation
+
+        left_trim = left_filtered[:min_len]
+        right_trim = right_filtered[:min_len]
+        right_trim = torch.flip(right_trim, dims=[0])
+
+        stacked = torch.stack((left_trim, right_trim), dim=0)
+        corr_matrix = torch.corrcoef(stacked)
+
+        return corr_matrix[0, 1].item()
+
+    # @staticmethod
+    # def spectral_smoothness_torch(y_dbm: torch.Tensor, floor: float = -60) -> float:
+    #     """
+    #     Computes the mean squared difference between adjacent spectral bins,
+    #     excluding the central mode and bins below the floor threshold.
+    #     """
+    #     mask = torch.ones_like(y_dbm, dtype=torch.float)
+    #     mask[y_dbm.shape[0] // 2] = 0  # exclude central mode
+    #     y_dbm_masked = y_dbm * mask
+    #     y_diff = torch.diff(y_dbm_masked)
+    #     smoothness = torch.mean(y_diff ** 2) / 10.0
+    #     return smoothness.item()
+    
+    @staticmethod
+    def spectral_corr_torch(y_dbm: torch.Tensor, y_target_dbm: torch.Tensor) -> float:
+        """
+        Computes the Pearson correlation coefficient between y_dbm and y_target_dbm using torch.corrcoef.
+        """
+        stacked = torch.stack([y_dbm, y_target_dbm])
+        corr_mat = torch.corrcoef(stacked)
+        corr = corr_mat[0, 1]
+        if torch.isnan(corr):
+            print('Corr is NaN')
+            return 0.0
+        return corr.item()
+
     
     def step(self, state, action, desired_spectrum):
         '''
@@ -485,11 +565,10 @@ class RL_MRR_Env():
             self.Ein[ii,int(self.mu0+self.ind_pmp[ii])] = torch.sqrt(Ppmp[ii])*len(self.mu)
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
-        # det_delta = action*(2/self.Nt)*(self.del_omega_end - self.del_omega_init)
-        delta_omega = self.rescale_and_quantize(action[1], self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)*(2*np.pi)  # Convert GHz to rad/s
+        delta_omega = (2*torch.pi)*self.rescale_and_quantize(action[1], self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
-            del_omega = self.current_del_omega + delta_omega #+ self.delta_theta/(self.tR)
+            del_omega = self.current_del_omega + delta_omega 
 
             if self.soft_clamp_ == False:
                 self.current_del_omega = torch.clamp(del_omega, min=min(self.del_omega_end, self.del_omega_init), max=max(self.del_omega_end, self.del_omega_init))
@@ -528,7 +607,6 @@ class RL_MRR_Env():
 
         
         # pop the first element of ecav_state and append new Ecav_dBm
-        # self.ecav_state = np.concatenate((self.ecav_state[1:], Ecav_dBm.cpu().numpy()[np.newaxis,:]), axis=0)
         if self.ecav_state.shape[0] >= self.seq_len:
             self.ecav_state = np.delete(self.ecav_state, 0, axis=0)
         self.ecav_state = np.concatenate((self.ecav_state, Ecav_dBm.cpu().numpy()[np.newaxis,:]), axis=0)
@@ -536,16 +614,13 @@ class RL_MRR_Env():
         if torch.corrcoef(torch.stack([self.primary_sidebands, Ecav_dBm]))[0,1].item() > 0.7:
             self.primary_sidebands_flag = True
         
-        # if self.primary_sidebands_flag == False:
-        #     reward = curr_pcav
+        # dropped = torch.delete(Ecav_dBm, len(Ecav_dBm)//2)
+        # if torch.all(dropped == -60):
+        #     reward = np.mean(self.pcav_hist)*1000
         # else:
-        reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + self.spectral_width_dbm_torch(Ecav_dBm, norm=150) # - 0.3*curr_pcav#+ 
-        # self.primary_sidebands_flag = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1]
-        # penalize for high variance in power
-        # if len(self.env_p_hist) > 1:
-        #     power_var = np.std(self.env_p_hist)
-        #     if power_var > 0.001:
-        #         reward -= 2*len(self.env_p_hist) * (power_var - 0.001)
+        reward = 2*env.spectral_width_dbm_torch(Ecav_dBm) + 2*env.spectral_corr_torch(Ecav_dBm, desired_spectrum_dBm) + 5*(env.spectral_symm_torch(Ecav_dBm))
+        # reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 2*self.spectral_width_dbm_torch(Ecav_dBm)
+        # 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 
         
         if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50 or torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() > 0.9:
             achieved = True
@@ -575,8 +650,8 @@ def calc_detuning_distance(env, scale=1):
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
-                  delta_omega_min=-5e6, delta_omega_max=5e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
+                  delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -586,7 +661,7 @@ desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 config = {
-    'input_dim': [env.seq_len, 300+3+2],
+    'input_dim': [env.seq_len, 300+3+2+1],
     'n_actions': 2,
     'alpha': 3e-4,
     'beta': 3e-4,
@@ -605,8 +680,8 @@ config = {
     'bidirectional': False,  # Whether to use bidirectional detuning
     'env_soft_clamp': env.soft_clamp_,  # Whether to use soft clamping in the environment
     'softness': env.softness,  # Softness parameter for soft clamping
-    'alpha_per': 0.7,  # Initial value of alpha for PER
-    'beta_per': int(4e5),   # Initial value of beta for PER
+    'alpha_per': 0.6,  # Initial value of alpha for PER
+    'beta_per': int(2e5),   # Initial value of beta for PER
     }
 # %%
 
@@ -646,7 +721,7 @@ if config['train']:
         logs['pump power'] = env.power
         log_pcav = 10*np.log10(pcav + 1e-12) + 30
         bounds = calc_detuning_distance(env, scale=3)
-        obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis], bounds*np.ones((env.seq_len,1))),axis=1)
+        obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis], bounds*np.ones((env.seq_len,1)), 100*env.delta_theta.item()*np.ones((env.seq_len,1))),axis=1)
         pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=i, desc='Episode %d' % i)
         acav_hist = []
         ecav_hist = []
@@ -663,7 +738,7 @@ if config['train']:
             curr_pcav = np.sum(np.abs(acav_)**2,keepdims=True)
             
             bounds = calc_detuning_distance(env, scale=3)
-            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 3*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30, bounds), axis=0)
+            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 3*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30, bounds, 100*env.delta_theta.item()*np.ones((1,))), axis=0)
             obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
             obs = obs_   
             agent.remember(obs, action, reward, obs_, terminal)
@@ -764,9 +839,10 @@ if config['train']:
             wandb.log({"ecav_modes": wandb.Image(fig)})
             plt.close(fig)
 
-            fig = plt.figure(figsize=(7,6))
-            plt.plot(det_hist, label=r'$f_{det}$', color='blue', linewidth=1.5)
+            fig = plt.figure(figsize=(14,4))
+            plt.plot(det_hist, label=r'$\Delta f_{pmp}$', color='blue', linewidth=1.5)
             plt.plot(to_chaos_hist, label=r'$f_{\theta}$', color='orange', linewidth=1.5)
+            plt.plot(np.array(det_hist)+np.array(to_chaos_hist), label=r'$\Delta f_{pmp}+f_{\theta}$', color='green', linewidth=1.5)
             plt.xlabel('Time step', fontsize=16)
             plt.ylabel('Freq (GHz)', fontsize=16)
             plt.title('Detuning and Chaos Frequency Evolution', fontsize=16)
@@ -877,7 +953,7 @@ def soft_clamp(x, low, high, softness=0.05):
 # Quick visual sanity-check
 # -------------------------------------------------
 x_max = 7*env.un_norm_kappa.item()/(2*np.pi*1e9)
-x_min = -1*env.un_norm_kappa.item()/(2*np.pi*1e9)
+x_min = -7*env.un_norm_kappa.item()/(2*np.pi*1e9)
 print('Detuning range for soft clamp test:', x_min, ' to ', x_max, ' GHz')
 x = np.linspace(x_min, x_max, 10000)         # test inputs
 x = x[::-1]
@@ -886,13 +962,13 @@ low, high = x_min, x_max
 hard   = np.clip(x, low, high)
 soft05 = soft_clamp(x, low, high, softness=0.05)
 soft10 = soft_clamp(x, low, high, softness=0.10)
-soft20 = soft_clamp(x, low, high, softness=0.5)
+soft20 = soft_clamp(x, low, high, softness=0.35)
 
 plt.figure(figsize=(10, 6))
 plt.plot(x, hard,   label='Hard clamp',   color='black', linewidth=2)
 plt.plot(x, soft05, label='Soft clamp (0.05)')
 plt.plot(x, soft10, label='Soft clamp (0.10)')
-plt.plot(x, soft20, label='Soft clamp (0.50)')
+plt.plot(x, soft20, label='Soft clamp (0.3)')
 plt.axhline(low,  color='gray', ls='--')
 plt.axhline(high, color='gray', ls='--')
 plt.title('Hard clamp vs. Soft clamp')

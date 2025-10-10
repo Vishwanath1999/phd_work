@@ -166,7 +166,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(4e6)#int(4e5)
+        self.max_steps = int(4e5)#int(4e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -475,11 +475,11 @@ class RL_MRR_Env():
             self.Ein[ii,int(self.mu0+self.ind_pmp[ii])] = torch.sqrt(Ppmp[ii])*len(self.mu)
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
-        # det_delta = action*(2/self.Nt)*(self.del_omega_end - self.del_omega_init)
-        delta_omega = self.rescale_and_quantize(action[1], self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)*(2*np.pi)  # Convert GHz to rad/s
+
+        delta_omega = (2*torch.pi)*self.rescale_and_quantize(action[1], self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
-            del_omega = self.current_del_omega + delta_omega #+ self.delta_theta/(self.tR)
+            del_omega = self.current_del_omega + delta_omega
 
             if self.soft_clamp_ == False:
                 self.current_del_omega = torch.clamp(del_omega, min=min(self.del_omega_end, self.del_omega_init), max=max(self.del_omega_end, self.del_omega_init))
@@ -1887,7 +1887,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect, 'new3')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch

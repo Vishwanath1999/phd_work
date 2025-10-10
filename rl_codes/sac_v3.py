@@ -258,7 +258,7 @@ class Actor(nn.Module):
     def forward(self, state):
         out, _ = self.seq_encoder(state)
         x = out[:,-1,:]  # Take the last output of the GRU
-        x = F.relu(self.fc1(x))
+        x = F.elu(self.fc1(x))
         if self.dist == 'normal':
             mu = self.mu_layer(x)
             log_std = self.log_std_layer(x)
@@ -280,7 +280,7 @@ class Actor(nn.Module):
         
         if self.dist == 'normal':
             pi_dist = Normal(mu, std)
-            pi_action = pi_dist.rsample() if reparam else pi_dist.sample()
+            pi_action = pi_dist.rsample() #if reparam else pi_dist.sample()
             log_prob = pi_dist.log_prob(pi_action).sum(axis=1)
             corr_fact = (2*(np.log(2) - pi_action - F.softplus(-2*pi_action))).sum(axis=1)
             log_prob -= corr_fact
@@ -288,6 +288,7 @@ class Actor(nn.Module):
         else:
             pi_dist = Beta(mu, std)
             pi_action = pi_dist.rsample() if reparam else pi_dist.sample()
+            # pi_action = T.clamp(pi_action, 1e-10, 1-1e-10)
             log_prob = pi_dist.log_prob(pi_action).sum(axis=1)
             pi_action = (2*pi_action - 1)*self.max_action
         return pi_action, log_prob
@@ -352,7 +353,7 @@ class CriticNetwork(nn.Module):
         out, _ = self.seq_encoder(state)
         x = out[:,-1,:]  # Take the last output of the GRU
         x = T.cat([x, action], dim=1)  # Concatenate action
-        x = F.relu(self.fc1(x))
+        x = F.elu(self.fc1(x))
         q_value = self.q_layer(x)
         return q_value
 
