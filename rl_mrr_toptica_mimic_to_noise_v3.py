@@ -110,10 +110,10 @@ class RL_MRR_Env():
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
         # del_omega_init = self.sim_tensor['domega_init']
-        del_omega_init = 10*self.un_norm_kappa
+        del_omega_init = 14*self.un_norm_kappa
         self.del_omega_init = del_omega_init
         self.current_del_omega = del_omega_init
-        del_omega_end = -10*self.un_norm_kappa
+        del_omega_end = -14*self.un_norm_kappa
         self.del_omega_end = del_omega_end
 
         # del_omega_stop = self.sim_tensor['domega_stop']
@@ -362,7 +362,6 @@ class RL_MRR_Env():
         self.ecav_state = np.array(self.ecav_state)
 
         # self.env_p_hist = []
-
         self.det_out_cntr = 0
         
         print('Reset...')
@@ -534,6 +533,16 @@ class RL_MRR_Env():
             print('Corr is NaN')
             return 0.0
         return corr.item()
+    
+    @staticmethod
+    def any_above_threshold_excluding_center(tensor, threshold):
+        n = tensor.size(0)
+        center_idx = n // 2
+        # Exclude central value
+        mask = torch.ones(n, dtype=bool)
+        mask[center_idx] = False
+        tensor_exc_center = tensor[mask]
+        return torch.any(tensor_exc_center > threshold).item()
 
     
     def step(self, state, action, desired_spectrum):
@@ -614,11 +623,10 @@ class RL_MRR_Env():
         if torch.corrcoef(torch.stack([self.primary_sidebands, Ecav_dBm]))[0,1].item() > 0.7:
             self.primary_sidebands_flag = True
         
-        # dropped = torch.delete(Ecav_dBm, len(Ecav_dBm)//2)
-        # if torch.all(dropped == -60):
-        #     reward = np.mean(self.pcav_hist)*1000
-        # else:
-        reward = 2*env.spectral_width_dbm_torch(Ecav_dBm) + 2*env.spectral_corr_torch(Ecav_dBm, desired_spectrum_dBm) + 5*(env.spectral_symm_torch(Ecav_dBm))
+        if self.any_above_threshold_excluding_center(Ecav_dBm, threshold=-56) == False:
+            reward = 0.5*np.mean(self.pcav_hist)
+        else:
+            reward = 3*env.spectral_width_dbm_torch(Ecav_dBm) + 2*env.spectral_corr_torch(Ecav_dBm, desired_spectrum_dBm) + 2*(env.spectral_symm_torch(Ecav_dBm))
         # reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 2*self.spectral_width_dbm_torch(Ecav_dBm)
         # 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 
         
@@ -651,7 +659,7 @@ def calc_detuning_distance(env, scale=1):
 # torch seed
 # torch.manual_seed(0)
 env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
-                  delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
+                  delta_omega_min=-3e6, delta_omega_max=3e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -839,10 +847,25 @@ if config['train']:
             wandb.log({"ecav_modes": wandb.Image(fig)})
             plt.close(fig)
 
+            correlations = np.array([np.corrcoef(ewg_dBm, desired_spectrum_dBm)[0,1] for ewg_dBm in ecav_hist])
+            mask = correlations >= 0.95
+            regions = []
+            start = None
+            for i, flag in enumerate(mask):
+                if flag and start is None:
+                    start = i
+                elif not flag and start is not None:
+                    regions.append((start, i-1))
+                    start = None
+            if start is not None:
+                regions.append((start, len(mask)-1))
+
             fig = plt.figure(figsize=(14,4))
             plt.plot(det_hist, label=r'$\Delta f_{pmp}$', color='blue', linewidth=1.5)
             plt.plot(to_chaos_hist, label=r'$f_{\theta}$', color='orange', linewidth=1.5)
             plt.plot(np.array(det_hist)+np.array(to_chaos_hist), label=r'$\Delta f_{pmp}+f_{\theta}$', color='green', linewidth=1.5)
+            for idx, (s, e) in enumerate(regions):
+                plt.axvspan(s, e, color='limegreen', alpha=0.3, label='Soliton existence range' if idx==0 else "")
             plt.xlabel('Time step', fontsize=16)
             plt.ylabel('Freq (GHz)', fontsize=16)
             plt.title('Detuning and Chaos Frequency Evolution', fontsize=16)
