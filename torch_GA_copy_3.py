@@ -139,9 +139,9 @@ alpha = k0+kext
 
 un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
-del_omega_init = 10*un_norm_kappa#sim_tensor['domega_init']
-del_omega_end = -5*un_norm_kappa#sim_tensor['domega_end']
-del_omega_stop = -5*un_norm_kappa#sim_tensor['domega_stop']
+del_omega_init = 14*un_norm_kappa#sim_tensor['domega_init']
+del_omega_end = -20*un_norm_kappa#sim_tensor['domega_end']
+del_omega_stop = -20*un_norm_kappa#sim_tensor['domega_stop']
 ind_sweep = sim_tensor['ind_pump_sweep'] 
 t_end = sim_tensor['Tscan']
 Dint = disp_tensor['Dint_new']#[0]
@@ -320,7 +320,7 @@ def ssfm_step(A0: torch.Tensor, it: int, alpha: torch.Tensor, Dint_shift: torch.
     err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
     raise ValueError(f"Convergence Error: {err}")
 
-def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton='high'):
+def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton='strong'):
     param = dict()
     param['tol'] = 1e-3
     param['max_iter'] = max_iter
@@ -341,7 +341,7 @@ def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton
         xi = -1.2e5         # Thermo-optic coefficient (W⁻¹s⁻¹)
     else:
         raise ValueError("Invalid value for 'ton'. Choose from 'weak', 'moderate', or 'strong'.")
-
+    # print(f"Thermal response type: {ton}, xi: {xi}")
     for it in iterator:
         del_omega_all[0, it] += delta_theta/(tR)
         Fdrive_val = Fdrive(it, A_in)
@@ -490,7 +490,7 @@ def reset_saved_data():
 # spec_dBm = 10 * np.log10(np.abs(Ecav)**2) + 30
 # spec_dBm = np.clip(spec_dBm, -60, 10)  # Clip to avoid extreme values
 # %%
-def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='high', save_dir=None):
+def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='strong', save_dir=None):
     """
     Main function to run the LLE simulation with given parameters.
     
@@ -636,7 +636,7 @@ def fitness_correlation(spec, num_step):
     correlation = np.corrcoef(spec, desired_spectrum_dBm)[0, 1]
     # center_idx = len(spec) // 2
     # mask = y
-    return 4*(1-correlation) + num_step
+    return 4*(1-correlation) #+ num_step
 
 def objective(X):
     """
@@ -645,7 +645,7 @@ def objective(X):
     """
     fine = X[0]  # GA passes an array
     dwell_steps = 100#int(X[1])  # Convert to integer for dwell steps
-    spec, num_step = LLE(fine, dwell_steps, X[1])
+    spec, num_step = LLE(fine, dwell_steps, X[1], ton='strong')
     return fitness_correlation(spec, num_step)  # Return the fitness value
 # %%
 from GA_lib2 import geneticalgorithm
@@ -749,7 +749,7 @@ if __name__ == "__main__":
         plt.show()
 # %%
 plt.style.use('physrev.mplstyle')
-run_name = 'GA_LLE_optim_corr_coeff_num_steps'
+run_name = 'GA_LLE_optim_corr_coeff_num_steps_strong'
 save_dir = os.path.join(os.getcwd(), run_name)
 # run the simulation with best params
 # load the best solution from file
@@ -759,11 +759,10 @@ with open(os.path.join(save_dir, 'best_solution.txt'), 'r') as f:
     import re
     numbers = re.findall(r"[-+]?\d*\.\d+|\d+", line)
     best_var = np.array([float(num) for num in numbers])
-# -0.77720861  0.82866072
-# -0.40729269  0.95622334
-fine = -0.90779669#best_var[0]
+# [-0.4314138   0.96498916]
+fine = -0.4314138#best_var[0]
 dwell_steps = 100
-pump_power = 0.59589996#best_var[1]  # Assuming the third parameter is the pump power
+pump_power = 0.96498916#best_var[1]  # Assuming the third parameter is the pump power
 print(f"Running simulation with fine={rescale_and_quantize(fine)/(2*np.pi*1e9)} GHz, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)} W")
 # spec = LLE(fine, dwell_steps, pump_power, progress_bar=True)
 # plot the spectrum against the desired spectrum

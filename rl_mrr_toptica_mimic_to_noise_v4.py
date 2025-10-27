@@ -110,11 +110,11 @@ class RL_MRR_Env():
         self.un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
         # del_omega_init = self.sim_tensor['domega_init']
-        del_omega_init = 5*self.un_norm_kappa
+        del_omega_init = 7*self.un_norm_kappa
         self.del_omega_init = del_omega_init
         self.del_omega_ul = 14*self.un_norm_kappa
         self.current_del_omega = del_omega_init
-        del_omega_end = -14*self.un_norm_kappa
+        del_omega_end = -20*self.un_norm_kappa
         self.del_omega_end = del_omega_end
 
         # del_omega_stop = self.sim_tensor['domega_stop']
@@ -360,7 +360,9 @@ class RL_MRR_Env():
         self.primary_sidebands_flag = False
         self.ecav_state = np.array(self.ecav_state)
 
-        # self.env_p_hist = []
+        # self.r_hist = []
+
+        self.env_p_hist = []
         self.det_out_cntr = 0
         
         print('Reset...')
@@ -410,11 +412,11 @@ class RL_MRR_Env():
     
     def is_terminal(self, Ecav_dBm, desired_spectrum_dBm, achieved):
         terminal = False
-        reward_penalty = 0
+        reward_penalty = 0.5
         corr = torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item()
         
 
-        if self.step_cntr-self.init_steps_ >= int(0.65*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
+        if self.step_cntr-self.init_steps_ >= int(0.5*self.Nt) and corr < 0.25: #and self.step_cntr-self.init_steps_ <= self.Nt:
             terminal = True
             reward_penalty = -5
             print('Did not form soliton ...')
@@ -542,6 +544,72 @@ class RL_MRR_Env():
         mask[center_idx] = False
         tensor_exc_center = tensor[mask]
         return torch.any(tensor_exc_center > threshold).item()
+    
+    @staticmethod
+    def calculate_proximity_bonus(ecav_hist: np.ndarray, desired_spectrum_dbm: np.ndarray) -> float:
+        """
+        Calculates a time-weighted bonus for maintaining a high correlation with the desired spectrum.
+        This version uses np.corrcoef in a loop.
+
+        Args:
+            ecav_hist (np.ndarray): History of spectra, shape (100, 300).
+            desired_spectrum_dbm (np.ndarray): The target spectrum, shape (300,).
+
+        Returns:
+            float: The calculated reward bonus.
+        """
+        seq_len = ecav_hist.shape[0]
+        if seq_len < 10:  # Ensure there's enough history to be meaningful
+            return 0.0
+
+        # Create weights that increase linearly, giving more importance to recent spectra.
+        weights = np.linspace(0.1, 1.0, seq_len)
+        
+        correlations = np.zeros(seq_len)
+        for i in range(seq_len):
+            # Calculate correlation for each historical spectrum against the target
+            corr_matrix = np.corrcoef(ecav_hist[i], desired_spectrum_dbm)
+            # The correlation value is at [0, 1] (or [1, 0])
+            correlations[i] = corr_matrix[0, 1]
+
+        # Handle any potential NaN values that might arise from zero-variance slices
+        correlations = np.nan_to_num(correlations, nan=0.0)
+
+        # Calculate the weighted average of the correlations.
+        weighted_avg_corr = np.average(correlations, weights=weights) # Square weights to emphasize recent history more strongly.
+
+        # Shape the bonus: reward high correlation, penalize low correlation.
+        # This creates a strong signal to stay above a certain performance threshold.
+        # The bonus is positive if the weighted average is > 0.7, and negative otherwise.
+        maintenance_bonus = (weighted_avg_corr - 0.5)*1.2
+        
+        return maintenance_bonus
+    
+    def calculate_proximity_bonus_v2(self, r_hist):
+        """
+        Calculates a time-weighted bonus for maintaining a high correlation with the desired spectrum.
+
+        Args:
+            r_hist (list of float): History of correlation coefficients.
+
+        Returns:
+            float: The calculated reward bonus.
+        """
+        seq_len = len(r_hist)
+        if seq_len < 10:  # Ensure there's enough history to be meaningful
+            return 0.0
+
+        # Create weights that increase linearly, giving more importance to recent correlations.
+        weights = np.linspace(0.1, 1.0, seq_len)
+        r_array = np.array(r_hist)
+
+        # Calculate the weighted average of the correlations.
+        weighted_avg_corr = np.average(r_array, weights=weights**2) # Square weights to emphasize recent history more strongly.
+
+        # Shape the bonus: reward high correlation, penalize low correlation.
+        maintenance_bonus = (weighted_avg_corr - 0.5)*1.2
+        
+        return maintenance_bonus
 
     
     def step(self, state, action, desired_spectrum):
@@ -563,9 +631,9 @@ class RL_MRR_Env():
             Ewg (np.ndarray) : Electric field in waveguide
         '''
         env.power = self.rescale_power(action[0:1], lower_limit=self.p_min, upper_limit=self.p_max, step_size=0.001)
-        # self.env_p_hist.append(env.power[0])
-        # if len(self.env_p_hist) > env.seq_len:
-        #     self.env_p_hist.pop(0)
+        self.env_p_hist.append(env.power[0])
+        if len(self.env_p_hist) > env.seq_len:
+            self.env_p_hist.pop(0)
         
         Ppmp = torch.tensor(env.power, dtype=torch.float64)
         
@@ -624,10 +692,16 @@ class RL_MRR_Env():
         if torch.corrcoef(torch.stack([self.primary_sidebands, Ecav_dBm]))[0,1].item() > 0.7:
             self.primary_sidebands_flag = True
         
-        if self.any_above_threshold_excluding_center(Ecav_dBm, threshold=-56) == False:
-            reward = 0.5*np.mean(self.pcav_hist)
-        else:
-            reward = 3*env.spectral_width_dbm_torch(Ecav_dBm) + 2*env.spectral_corr_torch(Ecav_dBm, desired_spectrum_dBm) + 2*(env.spectral_symm_torch(Ecav_dBm))
+        # if self.any_above_threshold_excluding_center(Ecav_dBm, threshold=-56) == False:
+        #     reward = 1*np.mean(self.pcav_hist)
+        # else:
+        reward = 2*env.spectral_width_dbm_torch(Ecav_dBm) + 2*env.spectral_corr_torch(Ecav_dBm, desired_spectrum_dBm) + 2*(env.spectral_symm_torch(Ecav_dBm)) #+ env.calculate_proximity_bonus_v2(self.r_hist)
+        # self.r_hist.append(reward)
+        # penalize for variance in pump power
+        reward -= 0.5*np.std(self.env_p_hist)
+        # if len(self.r_hist) > self.seq_len:
+        #     self.r_hist.pop(0)
+        # if self.current_del_omega + self.delta_theta/(self.tR)
         # reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 2*self.spectral_width_dbm_torch(Ecav_dBm)
         # 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 
         
@@ -652,15 +726,15 @@ class RL_MRR_Env():
 # a fuction that takes in env as argument and calculates the manitude of difference between curr_del_omega and del_omega_init and del_omega_end
 def calc_detuning_distance(env, scale=1):
     # distance to initial detuning
-    span = env.del_omega_init - env.del_omega_end
+    span = env.del_omega_ul - env.del_omega_end
     d_low = (env.current_del_omega - env.del_omega_end)/span
-    d_high = (env.del_omega_init - env.current_del_omega)/span
+    d_high = (env.del_omega_ul - env.current_del_omega)/span
     return np.array([scale*d_low.item(), scale*d_high.item()])
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
-                  delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.1, ctrl_freq=100, thermal_effect='high',\
+                  delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -675,8 +749,8 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high',
-    'batch_size': 256,
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_v3',
+    'batch_size': 128,
     'dist': 'beta', # 'beta' or 'normal'
     'train':True,
     'p_max': env.p_max,
@@ -689,7 +763,7 @@ config = {
     'bidirectional': False,  # Whether to use bidirectional detuning
     'env_soft_clamp': env.soft_clamp_,  # Whether to use soft clamping in the environment
     'softness': env.softness,  # Softness parameter for soft clamping
-    'alpha_per': 0.6,  # Initial value of alpha for PER
+    'alpha_per': 0.65,  # Initial value of alpha for PER
     'beta_per': int(2e5),   # Initial value of beta for PER
     }
 # %%
@@ -722,6 +796,7 @@ if config['train']:
     den = env.p_max - env.p_min
     acav_hist = []
     ecav_hist = []
+    # p_pmp_hist = []
     for i in range(n_games):
         score = 0
         done = False
@@ -736,18 +811,20 @@ if config['train']:
         ecav_hist = []
         det_hist = []
         to_chaos_hist = []
+        p_pmp_hist = []
         while not done:
             action = agent.choose_action(obs)
             
             next_state, reward, done, terminal, achieved, acav_, ecav_, ewg = env.step(state, action, desired_spectrum_tensor)
             # log perf action
+            reward = reward + env.calculate_proximity_bonus(obs[:,:300], desired_spectrum_dBm[len(env.mu)//2-150:len(env.mu)//2+150]/10)
             logs['power (W)'] = env.power
             logs['detuning (MHz)'] = env.rescale_and_quantize(action[1], env.delta_omega_min, env.delta_omega_max, env.delta_omega_step)*1e-6
             logs['reward'] = reward  
             curr_pcav = np.sum(np.abs(acav_)**2,keepdims=True)
             
             bounds = calc_detuning_distance(env, scale=3)
-            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 3*env.current_del_omega/(env.del_omega_init - env.del_omega_end), 10*np.log10(curr_pcav)+30, bounds, 100*env.delta_theta.item()*np.ones((1,))), axis=0)
+            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 3*env.current_del_omega/(env.del_omega_ul - env.del_omega_end), 10*np.log10(curr_pcav)+30, bounds, 100*env.delta_theta.item()*np.ones((1,))), axis=0)
             obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
             obs = obs_   
             agent.remember(obs, action, reward, obs_, terminal)
@@ -760,10 +837,11 @@ if config['train']:
             ewg_dBm = 10*np.log10(np.abs(ewg)**2)+30
             ewg_dBm = np.clip(ewg_dBm, -60, 20)
 
-            acav_hist.append(np.abs(acav_))
+            acav_hist.append(np.abs(acav_)**2)
             ecav_hist.append(ewg_dBm)
             det_hist.append(env.current_del_omega.item()/(2*np.pi*1e9))  # Convert rad/s to GHz
             to_chaos_hist.append((env.delta_theta.item()*env.FSR.item())/(2*np.pi*1e9))  # Convert rad/s to GHz
+            p_pmp_hist.append(env.power[0])
             
             if agent.memory.mem_cntr > 4*agent.batch_size:
                 cl, al, ent_loss, ent_coeff = agent.learn(global_n_steps)
@@ -823,11 +901,11 @@ if config['train']:
             wandb.log({"ecav_freq": wandb.Image(fig)})
             plt.close(fig)
         
-        if avg_score > best_score or terminal==False:
+        if score >= best_score or terminal==False:
             fig = plt.figure(figsize=(14,4))
-            plt.imshow(np.array(acav_hist).T, aspect='auto', cmap='jet', origin='lower', extent=[0, len(acav_hist), -env.tR.item()/2*1e12,env.tR.item()/2*1e12])
+            plt.imshow(1e3*np.array(acav_hist).T, aspect='auto', cmap='jet', origin='lower', extent=[0, 1e6*100*env.tR.item()*len(acav_hist), -env.tR.item()/2*1e12,env.tR.item()/2*1e12])
             plt.colorbar(label='Power (a.u.)')
-            plt.xlabel('Time step', fontsize=16)
+            plt.xlabel(r'Time ($\mu s$)', fontsize=16)
             plt.ylabel(r'$t_R$ (ps)', fontsize=16)
             plt.title('Cavity Mode Power Evolution', fontsize=16)
             plt.xticks(fontsize=14)
@@ -837,9 +915,9 @@ if config['train']:
             plt.close(fig)
 
             fig = plt.figure(figsize=(14,4))
-            plt.imshow(np.array(ecav_hist).T, aspect='auto', cmap='jet', origin='lower', extent=[0, len(ecav_hist), -220,220])
+            plt.imshow(np.array(ecav_hist).T, aspect='auto', cmap='jet', origin='lower', extent=[0, 1e6*100*env.tR.item()*len(ecav_hist), -220,220])
             plt.colorbar(label='Power (dBm)')
-            plt.xlabel('Time step', fontsize=16)
+            plt.xlabel(r'Time ($\mu s$)', fontsize=16)
             plt.ylabel(r'$\mu$', fontsize=16)
             plt.title('Cavity Spectrum Evolution', fontsize=16)
             plt.xticks(fontsize=14)
@@ -849,7 +927,7 @@ if config['train']:
             plt.close(fig)
 
             correlations = np.array([np.corrcoef(ewg_dBm, desired_spectrum_dBm)[0,1] for ewg_dBm in ecav_hist])
-            mask = correlations >= 0.95
+            mask = correlations >= 0.9
             regions = []
             start = None
             for i, flag in enumerate(mask):
@@ -862,23 +940,65 @@ if config['train']:
                 regions.append((start, len(mask)-1))
 
             fig = plt.figure(figsize=(14,4))
-            plt.plot(det_hist, label=r'$\Delta f_{pmp}$', color='blue', linewidth=1.5)
-            plt.plot(to_chaos_hist, label=r'$f_{\theta}$', color='orange', linewidth=1.5)
-            plt.plot(np.array(det_hist)+np.array(to_chaos_hist), label=r'$\Delta f_{pmp}+f_{\theta}$', color='green', linewidth=1.5)
+            t = np.linspace(0, 1e6*100*env.tR.item()*len(det_hist), len(det_hist))
+            plt.plot(t,det_hist, label=r'$\Delta f_{pmp}$', color='blue', linewidth=1.5)
+            plt.plot(t,to_chaos_hist, label=r'$f_{\theta}$', color='orange', linewidth=1.5)
+            total = np.array(det_hist)+np.array(to_chaos_hist)
+            plt.plot(t,total, label=r'$\Delta f_{pmp}+f_{\theta}$', color='green', linewidth=1.5)  
+            # plt.axhline(-1.5, color='k', linestyle='--', label='SER start')
+            # plt.axhline(-4.5, color='k', linestyle='--', label='SER end')
             for idx, (s, e) in enumerate(regions):
-                plt.axvspan(s, e, color='limegreen', alpha=0.3, label='Soliton existence range' if idx==0 else "")
-            plt.xlabel('Time step', fontsize=16)
+                plt.axhspan(total[s], total[e], color='limegreen', alpha=0.3, label='Soliton existence range' if idx==0 else "")
+            plt.xlabel(r'Time ($\mu s$)', fontsize=16)
             plt.ylabel('Freq (GHz)', fontsize=16)
             plt.title('Detuning and Chaos Frequency Evolution', fontsize=16)
             plt.grid()
-            plt.legend(fontsize=16)
+            plt.legend(fontsize=14, loc='lower center', bbox_to_anchor=(0.5, -0.45), ncol=6, borderaxespad=0.)
             plt.xticks(fontsize=14)
             plt.yticks(fontsize=14)
             plt.tight_layout()
             wandb.log({"detuning_chaos_freq": wandb.Image(fig)})
             plt.close(fig)
 
-        if terminal == False and avg_score > best_score:
+            fig = plt.figure(figsize=(14,4))
+            plt.plot(t,p_pmp_hist, label='Pump Power', color='red', linewidth=1.5)
+            plt.xlabel(r'Time ($\mu s$)', fontsize=16)
+            plt.ylabel('Pump Power (W)', fontsize=16)
+            plt.title('Pump Power Evolution', fontsize=16)
+            for idx, (s, e) in enumerate(regions):
+                plt.axhspan(p_pmp_hist[s], p_pmp_hist[e], color='limegreen', alpha=0.3, label='Soliton existence range' if idx==0 else "")
+            plt.grid()
+            plt.legend(fontsize=14, loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=4, borderaxespad=0.)
+            plt.xticks(fontsize=14)
+            plt.yticks(fontsize=14)
+            plt.tight_layout()
+            wandb.log({"pump_power": wandb.Image(fig)})
+            plt.close(fig)
+
+            # 3D plot of pump power vs detuning vs time
+            # fig = plt.figure(figsize=(12, 9))
+            # ax = fig.add_subplot(111, projection='3d')
+            # time_steps = np.arange(len(p_pmp_hist))
+            
+            # # Plot the full trajectory
+            # ax.plot(time_steps, total, p_pmp_hist, color='blue', alpha=0.4, label='Trajectory')
+
+            # # Highlight the soliton regions
+            # for idx, (s, e) in enumerate(regions):
+            #     label = 'Soliton Existence' if idx == 0 else ""
+            #     ax.plot(time_steps[s:e+1], total[s:e+1], p_pmp_hist[s:e+1], color='red', linewidth=3, label=label)
+
+            # ax.set_xlabel('Time Step', fontsize=14)
+            # ax.set_ylabel(r'Total Detuning ($\Delta f_{pmp}+f_{\theta}$) (GHz)', fontsize=14)
+            # ax.set_zlabel('Pump Power (W)', fontsize=14)
+            # ax.set_title('Pump Power vs. Detuning Evolution', fontsize=16)
+            # ax.legend(fontsize=14)
+            # ax.grid(True)
+            # plt.tight_layout()
+            # wandb.log({"pump_power_vs_detuning_3d": wandb.Image(fig)})
+            # plt.close(fig)
+
+        if terminal==False and avg_score > best_score:
             agent.save_models()
 
         if avg_score > best_score:
