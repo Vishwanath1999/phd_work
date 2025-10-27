@@ -402,7 +402,7 @@ class SACAgent:
         self.update_network_parameters(tau=1)
         self.target_ent_coef = -float(n_actions)
         self.log_ent_coef = T.log(T.ones(1,device=self.actor.device)).requires_grad_(True)
-        self.ent_coef_optimizer = optim.Adam([self.log_ent_coef], lr=alpha)
+        self.ent_coef_optimizer = optim.Adam([self.log_ent_coef], lr=0.5*alpha)
 
         self.ent_coef_max, self.ent_coef_min = 1, 1e-6
 
@@ -440,7 +440,7 @@ class SACAgent:
         new_state = T.tensor(new_state, dtype=T.float).to(self.actor.device)
         done = T.tensor(done).to(self.actor.device)
 
-        ent_coef = self.log_ent_coef.detach().exp().clamp(min=1e-8, max=1.0)
+        ent_coef = self.log_ent_coef.detach().exp()#.clamp(min=1e-8, max=1.0)
         # ent_coef = T.clamp(ent_coef, self.ent_coef_min, self.ent_coef_max)
 
         with T.no_grad():
@@ -455,7 +455,10 @@ class SACAgent:
         self.critic_2.optimizer.zero_grad()
         q1 = self.critic_1(state, action).view(-1)
         q2 = self.critic_2(state, action).view(-1)
-        critic_loss = 0.5* (T.mean(weights*(q1 - target_value)**2, dim=0) + T.mean(weights*(q2 - target_value)**2, dim=0))
+        if self.use_per:
+            critic_loss = 0.5* (T.mean(weights*(q1 - target_value)**2, dim=0) + T.mean(weights*(q2 - target_value)**2, dim=0))
+        else:
+            critic_loss = 0.5* (F.mse_loss(q1, target_value) + F.mse_loss(q2, target_value))
         critic_loss.backward()
         nn.utils.clip_grad_norm_(self.critic_1.parameters(), 1)
         nn.utils.clip_grad_norm_(self.critic_2.parameters(), 1)

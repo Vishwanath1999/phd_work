@@ -102,6 +102,8 @@ class RL_MRR_Env():
             self.xi = -(4.5e4)
         elif thermal_effect == 'high':
             self.xi = -1.2e5
+        elif thermal_effect == 'none':
+            self.xi = 0.0
         else:
             raise ValueError("Invalid thermal effect. Choose from 'low', 'moderate', or 'high'.")
         
@@ -558,7 +560,7 @@ class RL_MRR_Env():
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low',\
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
                   delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
@@ -1059,14 +1061,20 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     kappa = env.un_norm_kappa.item()/(2*np.pi)
     detuning_kappa = detuning_array / kappa
     plt.figure(figsize=(10, 6))
-    plt.plot(time_axis, detuning_kappa, linewidth=1.5)
+    plt.plot(time_axis, detuning_kappa, linewidth=1.5, label=r'$\Delta f_{pmp}$')
+    if env.thermal_effect != 'none':
+        plt.plot(time_axis, (np.array(delta_theta)/(2*np.pi*env.tR.item()))/kappa, linewidth=1.5 , label=r'$f_{\Theta}$')
+        plt.plot(time_axis, detuning_kappa+(np.array(delta_theta)/(2*np.pi*env.tR.item()))/kappa, linewidth=1.5 , label=r'$\Delta f_{eff}$')
     plt.xlabel(r'Time ($\mu$s)', fontsize=18)
     plt.ylabel(r'Pump detuning ($\kappa$ units)', fontsize=18)
     plt.grid()
     plt.xticks(fontsize=18)
     plt.yticks(fontsize=18)
+    plt.legend(fontsize=18)
+
     ymin, ymax = plt.ylim()
-    yticks = np.arange(np.floor(ymin*2)/2, np.ceil(ymax*2)/2 + 0.01, 0.5)
+    yticks = np.linspace(np.floor(ymin*2)/2, np.ceil(ymax*2)/2 + 0.01, num=8)
+    # np.arange(np.floor(ymin*2)/2, np.ceil(ymax*2)/2 + 0.01, 0.5)
     def frac_label(val):
         frac = fractions.Fraction(val).limit_denominator(8)
         if frac.numerator == 0:
@@ -1702,7 +1710,7 @@ def add_advanced_analysis_to_plot_all_results(env, save_dir, idx, pcav_hist, aca
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='low',
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='none',
                      delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.5)
     desired_spectrum = loadmat('desired_spec.mat')['Ecav'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -1786,7 +1794,7 @@ def run_test_processes(run_id, save_dir):
             env, save_dir, run_id, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta,
             np.array(action_hist), freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect
         )
-        add_advanced_analysis_to_plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect)
+        # add_advanced_analysis_to_plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect)
 
 # %%
 def plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir):
@@ -1887,7 +1895,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect, 'ipc_ppt')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
