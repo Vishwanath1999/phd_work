@@ -114,7 +114,7 @@ class RL_MRR_Env():
         self.del_omega_init = del_omega_init
         self.del_omega_ul = 14*self.un_norm_kappa
         self.current_del_omega = del_omega_init
-        del_omega_end = -20*self.un_norm_kappa
+        del_omega_end = -14*self.un_norm_kappa
         self.del_omega_end = del_omega_end
 
         # del_omega_stop = self.sim_tensor['domega_stop']
@@ -733,7 +733,7 @@ def calc_detuning_distance(env, scale=1):
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.1, ctrl_freq=100, thermal_effect='high',\
+env = RL_MRR_Env(seq_len=100, p_max=0.3, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
                   delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
@@ -904,7 +904,7 @@ if config['train']:
         if score >= best_score or terminal==False:
             fig = plt.figure(figsize=(14,4))
             plt.imshow(1e3*np.array(acav_hist).T, aspect='auto', cmap='jet', origin='lower', extent=[0, 1e6*100*env.tR.item()*len(acav_hist), -env.tR.item()/2*1e12,env.tR.item()/2*1e12])
-            plt.colorbar(label='Power (a.u.)')
+            plt.colorbar(label='Power (mW)')
             plt.xlabel(r'Time ($\mu s$)', fontsize=16)
             plt.ylabel(r'$t_R$ (ps)', fontsize=16)
             plt.title('Cavity Mode Power Evolution', fontsize=16)
@@ -998,7 +998,7 @@ if config['train']:
             # wandb.log({"pump_power_vs_detuning_3d": wandb.Image(fig)})
             # plt.close(fig)
 
-        if terminal==False and avg_score > best_score:
+        if avg_score > best_score:
             agent.save_models()
 
         if avg_score > best_score:
