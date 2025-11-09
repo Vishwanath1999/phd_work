@@ -563,7 +563,7 @@ class RL_MRR_Env():
             return 0.0
 
         # Create weights that increase linearly, giving more importance to recent spectra.
-        weights = np.linspace(0.1, 1.0, seq_len)
+        weights = np.linspace(0.4, 1.0, seq_len)
         
         correlations = np.zeros(seq_len)
         for i in range(seq_len):
@@ -906,8 +906,8 @@ if config['train']:
             plt.imshow(1e3*np.array(acav_hist).T, aspect='auto', cmap='jet', origin='lower', extent=[0, 1e6*100*env.tR.item()*len(acav_hist), -env.tR.item()/2*1e12,env.tR.item()/2*1e12])
             plt.colorbar(label='Power (mW)')
             plt.xlabel(r'Time ($\mu s$)', fontsize=16)
-            plt.ylabel(r'$t_R$ (ps)', fontsize=16)
-            plt.title('Cavity Mode Power Evolution', fontsize=16)
+            plt.ylabel(r'Fast time $(t_R)$', fontsize=16)
+            # plt.title('Cavity Mode Power Evolution', fontsize=16)
             plt.xticks(fontsize=14)
             plt.yticks(fontsize=14)
             plt.tight_layout()
@@ -918,8 +918,8 @@ if config['train']:
             plt.imshow(np.array(ecav_hist).T, aspect='auto', cmap='jet', origin='lower', extent=[0, 1e6*100*env.tR.item()*len(ecav_hist), -220,220])
             plt.colorbar(label='Power (dBm)')
             plt.xlabel(r'Time ($\mu s$)', fontsize=16)
-            plt.ylabel(r'$\mu$', fontsize=16)
-            plt.title('Cavity Spectrum Evolution', fontsize=16)
+            plt.ylabel(r'Mode Number', fontsize=16)
+            # plt.title('Cavity Spectrum Evolution', fontsize=16)
             plt.xticks(fontsize=14)
             plt.yticks(fontsize=14)
             plt.tight_layout()
