@@ -1813,12 +1813,12 @@ if __name__ == '__main__':
 # freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
 # plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
 # %%
-# import glob
-# save_dir = os.path.join('./results', agent.run_name, env.thermal_effect, 'ipc_ppt')
-# acav_hist = np.load(os.path.join(save_dir, '2_acav_hist.npy'), allow_pickle=True)
-# det_hist = np.load(os.path.join(save_dir, '2_det_hist.npy'), allow_pickle=True)
-# delta_theta = np.load(os.path.join(save_dir, '2_delta_theta.npy'), allow_pickle=True)
-# ewg_hist = np.load(os.path.join(save_dir, '2_e_wg_hist.npy'), allow_pickle=True)
-# pcav_hist = np.load(os.path.join(save_dir, '2_p_cav.npy'), allow_pickle=True)
+import glob
+save_dir = os.path.join('./results', agent.run_name, env.thermal_effect, 'ipc_ppt')
+acav_hist = np.load(os.path.join(save_dir, '6_acav_hist.npy'), allow_pickle=True)
+det_hist = np.load(os.path.join(save_dir, '6_det_hist.npy'), allow_pickle=True)
+delta_theta = np.load(os.path.join(save_dir, '6_delta_theta.npy'), allow_pickle=True)
+ewg_hist = np.load(os.path.join(save_dir, '6_e_wg_hist.npy'), allow_pickle=True)
+pcav_hist = np.load(os.path.join(save_dir, '6_p_cav.npy'), allow_pickle=True)
 # plot_all_results
 # %%

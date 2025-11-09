@@ -952,9 +952,10 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.plot(time_axis, 1e3*np.array(pcav_hist), linewidth=1.5)
     plt.grid()
     plt.xlabel(r'Time ($\mu$s)', fontsize=20)
-    plt.ylabel(r'$P_{cav}$ (mW)', fontsize=20)
+    plt.ylabel(r'Power (mW)', fontsize=20)
     plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
+    plt.title('Intracavity Power', fontsize=22, fontweight='bold')
     plt.tight_layout()    
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.svg'), format='svg')
@@ -964,7 +965,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.plot(time_axis, 1e3*np.array(pcav_hist), linewidth=1.5)
     plt.grid()
     plt.xlabel(r'Time ($\mu$s)', fontsize=20)
-    plt.ylabel(r'$P_{cav}$ (mW)', fontsize=20)
+    plt.ylabel(r'Power (mW)', fontsize=20)
     plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
     plt.xlim(0, 0.025)  # Zoom in to first 25 microseconds
@@ -1075,28 +1076,24 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
         plt.plot(time_axis, np.array(delta_theta)/kappa, linewidth=1.5 , label=r'$f_{\Theta}$')
         plt.plot(time_axis, detuning_kappa+np.array(delta_theta)/kappa, linewidth=1.5 , label=r'$\Delta f_{eff}$')
     plt.xlabel(r'Time ($\mu$s)', fontsize=20)
-    plt.ylabel(r'Pump detuning ($\kappa$ units)', fontsize=20)
+    plt.ylabel(r'Frequency', fontsize=20)
     plt.grid()
     plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
     plt.legend(fontsize=20)
 
     ymin, ymax = plt.ylim()
-    yticks = np.linspace(np.floor(ymin*2)/2, np.ceil(ymax*2)/2 + 0.01, num=8)
+    yticks = np.linspace(ymin, ymax, 5)
     def frac_label(val):
-        frac = fractions.Fraction(val).limit_denominator(8)
-        if frac.numerator == 0:
+        if val == 0:
             return r"$0$"
-        elif frac.denominator == 1:
-            return rf"${frac.numerator}\,\kappa$"
-        elif frac.numerator == 1:
-            return rf"$\frac{{1}}{{{frac.denominator}}}\,\kappa$"
-        elif frac.numerator == -1:
-            return rf"$-\frac{{1}}{{{frac.denominator}}}\,\kappa$"
+        elif val == int(val):
+            return rf"${int(val)}\,\kappa$"
         else:
-            return rf"$\frac{{{frac.numerator}}}{{{frac.denominator}}}\,\kappa$"
+            return rf"${val:.1f}\,\kappa$"
     ytick_labels = [frac_label(y) for y in yticks]
     plt.yticks(yticks, ytick_labels, fontsize=20)
+    plt.title('Pump Detuning', fontsize=22, fontweight='bold')
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.svg'), format='svg')
@@ -1109,7 +1106,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
         plt.plot(time_axis, np.array(delta_theta)/kappa, linewidth=1.5 , label=r'$f_{\Theta}$')
         plt.plot(time_axis, detuning_kappa+np.array(delta_theta)/kappa, linewidth=1.5 , label=r'$\Delta f_{eff}$')
     plt.xlabel(r'Time ($\mu$s)', fontsize=20)
-    plt.ylabel(r'Pump detuning ($\kappa$ units)', fontsize=20)
+    plt.ylabel(r'Frequency', fontsize=20)
     plt.grid()
     plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
@@ -1779,6 +1776,8 @@ def run_test_processes(run_id, save_dir):
         print(f'Run {run_id} completed with score {score} at step {idx}')
         np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
         np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
+        # save_reward_history
+        np.save(os.path.join(save_dir, str(run_id) + '_reward_history.npy'), np.array(r_hist))
         # Prepare spectra for plotting
         freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
         obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
@@ -1792,7 +1791,7 @@ def run_test_processes(run_id, save_dir):
         # add_advanced_analysis_to_plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta, action_hist, freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect)
 
 # %%
-def plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir):
+def plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir):
     """
     Plot mean and std of P_cav and Frequency from multiple npy files.
 
@@ -1914,6 +1913,27 @@ def plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir):
     plt.show()
     plt.close(fig)
 
+    # plot the mean and avg of reward histories w.r.t time
+    reward_arrs = [np.load(f) for f in reward_files]
+    reward_pad = np.full((len(reward_arrs), max_len), np.nan)
+    for i, arr in enumerate(reward_arrs):
+        reward_pad[i, :len(arr)] = arr
+    mu_reward = np.nanmean(reward_pad, axis=0)
+    sd_reward = np.nanstd(reward_pad, axis=0)
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+    ln1, = ax1.plot(x, mu_reward, color='green', linewidth=1.8, label='Reward mean')
+    ax1.fill_between(x, mu_reward - sd_reward, mu_reward + sd_reward, color='green', alpha=0.25, label='Reward ±1σ')
+    ax1.set_xlabel(r'Time ($\mu s$)', fontsize=20)
+    ax1.set_ylabel(r'Reward', fontsize=20)
+    ax1.tick_params(axis='y', labelcolor='green')
+    ax1.grid(True, alpha=0.4)
+    fig.tight_layout()
+    ax1.tick_params(axis='x', labelsize=20)
+    ax1.tick_params(axis='y', labelsize=20)
+    fig.savefig(os.path.join(save_dir, 'reward_mean_std.png'), dpi=200)
+    fig.savefig(os.path.join(save_dir, 'reward_mean_std.svg'))
+    plt.show()
+    plt.close(fig)
 
     print('Saved pcav_freq_mean_std.*')
 # %%
@@ -1943,7 +1963,8 @@ if __name__ == '__main__':
     # plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
     pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
     freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
-    plot_pcav_freq_mean_std(pcav_files, freq_files, save_dir)
+    reward_files = sorted(glob.glob(os.path.join(save_dir, '*_reward_history.npy')))
+    plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir)
 # '''
 # %%
 # if __name__ == '__main__':
