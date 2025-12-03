@@ -112,9 +112,9 @@ class RL_MRR_Env():
         # del_omega_init = self.sim_tensor['domega_init']
         del_omega_init = 7*self.un_norm_kappa
         self.del_omega_init = del_omega_init
-        self.del_omega_ul = 14*self.un_norm_kappa
+        self.del_omega_ul = 7*self.un_norm_kappa
         self.current_del_omega = del_omega_init
-        del_omega_end = -20*self.un_norm_kappa
+        del_omega_end = -7*self.un_norm_kappa
         self.del_omega_end = del_omega_end
 
         # del_omega_stop = self.sim_tensor['domega_stop']
@@ -165,7 +165,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(4e5)
+        self.max_steps = int(7e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -309,7 +309,7 @@ class RL_MRR_Env():
         self.t_sim_step = 0
 
         # self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
-        self.power = np.array([0.2])
+        self.power = np.array([0.16])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
 
         for ii in range(len(Ppmp)):
@@ -667,7 +667,7 @@ class RL_MRR_Env():
         # if self.any_above_threshold_excluding_center(Ecav_dBm, threshold=-56) == False:
         #     reward = 1*np.mean(self.pcav_hist)
         # else:
-        reward = 2*env.spectral_width_dbm_torch(Ecav_dBm) + 2*env.spectral_corr_torch(Ecav_dBm, desired_spectrum_dBm) + 2*(env.spectral_symm_torch(Ecav_dBm))
+        reward = 2*env.spectral_width_dbm_torch(Ecav_dBm) + 2*(env.spectral_corr_torch(Ecav_dBm, desired_spectrum_dBm)-0.5) + 2*(env.spectral_symm_torch(Ecav_dBm))
 
         
         # if self.current_del_omega + self.delta_theta/(self.tR)
@@ -677,6 +677,7 @@ class RL_MRR_Env():
         if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50 or torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() > 0.9:
             achieved = True
             reward += 2
+
         else:
             achieved = False
 
@@ -703,7 +704,7 @@ def calc_detuning_distance(env, scale=1):
 # torch seed
 # torch.manual_seed(0)
 env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
-                  delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
+                  delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -718,9 +719,9 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_highv2',
-    'batch_size': 128,
-    'dist': 'beta', # 'beta' or 'normal'
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuningv4',
+    'batch_size': 256,
+    'dist': 'normal', # 'beta' or 'normal'
     'train':True,
     'p_max': env.p_max,
     'p_min': env.p_min,
@@ -732,8 +733,8 @@ config = {
     'bidirectional': False,  # Whether to use bidirectional detuning
     'env_soft_clamp': env.soft_clamp_,  # Whether to use soft clamping in the environment
     'softness': env.softness,  # Softness parameter for soft clamping
-    'alpha_per': 0.65,  # Initial value of alpha for PER
-    'beta_per': int(2e5),   # Initial value of beta for PER
+    'alpha_per': 0.4,  # Initial value of alpha for PER
+    'beta_per': int(2e5),   # Number of steps to reach beta=1 for PER
     }
 # %%
 
@@ -766,7 +767,7 @@ if config['train']:
     acav_hist = []
     ecav_hist = []
     # p_pmp_hist = []
-    for i in range(n_games):
+    for game in range(n_games):
         score = 0
         done = False
         n_steps = 0
@@ -775,7 +776,7 @@ if config['train']:
         log_pcav = 10*np.log10(pcav + 1e-12) + 30
         bounds = calc_detuning_distance(env, scale=3)
         obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis], bounds*np.ones((env.seq_len,1)), 100*env.delta_theta.item()*np.ones((env.seq_len,1))),axis=1)
-        pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=i, desc='Episode %d' % i)
+        pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=game, desc='Episode %d' % game)
         acav_hist = []
         ecav_hist = []
         det_hist = []
@@ -791,6 +792,7 @@ if config['train']:
             logs['detuning (MHz)'] = env.rescale_and_quantize(action, env.delta_omega_min, env.delta_omega_max, env.delta_omega_step)*1e-6
             logs['reward'] = reward  
             curr_pcav = np.sum(np.abs(acav_)**2,keepdims=True)
+            logs['pcav (mW)'] = 1000*curr_pcav[0]
             
             bounds = calc_detuning_distance(env, scale=3)
             ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, 3*env.current_del_omega/(env.del_omega_ul - env.del_omega_end), 10*np.log10(curr_pcav)+30, bounds, 100*env.delta_theta.item()*np.ones((1,))), axis=0)
@@ -872,15 +874,13 @@ if config['train']:
         
         if score >= best_score or terminal==False:
             fig = plt.figure(figsize=(14,4))
-            plt.imshow(np.array(acav_hist).T, aspect='auto', cmap='jet', origin='lower', extent=[0, 1e6*100*env.tR.item()*len(acav_hist), -env.tR.item()/2*1e12,env.tR.item()/2*1e12])
-            plt.colorbar(label='Power (a.u.)')
+            plt.imshow(1e3*np.array(acav_hist).T, aspect='auto', cmap='jet', origin='lower', extent=[0, 1e6*100*env.tR.item()*len(acav_hist), -env.tR.item()/2*1e12,env.tR.item()/2*1e12])
+            plt.colorbar(label='Power (mW)')
             plt.xlabel(r'Time ($\mu s$)', fontsize=16)
-            plt.ylabel(r'$t_R$ (ps)', fontsize=16)
-            plt.title('Cavity Mode Power Evolution', fontsize=16)
+            plt.ylabel(r'Fast time $(t_R)$', fontsize=16)
+            # plt.title('Cavity Mode Power Evolution', fontsize=16)
             plt.xticks(fontsize=14)
             plt.yticks(fontsize=14)
-            # set the xticks to scientific notation
-            plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
             plt.tight_layout()
             wandb.log({"acav_modes": wandb.Image(fig)})
             plt.close(fig)
@@ -971,13 +971,17 @@ if config['train']:
             # wandb.log({"pump_power_vs_detuning_3d": wandb.Image(fig)})
             # plt.close(fig)
             
-        if len(p_pmp_hist)>2000 and score > best_score:
+        if terminal==False:
             agent.save_models()
+            artifact_path = agent.actor.chkpt_file
+            artifact = wandb.Artifact(agent.run_name + '_model', type='model')
+            artifact.add_file(artifact_path)
+            wandb.log_artifact(artifact, aliases=[f"best_model_episode_{i}"])
 
         if avg_score > best_score:
             best_score = avg_score        
 
-        print('episode: ', i, 'score: %.2f' % score, 'average score: %.2f' % avg_score,'best score: %.2f' % best_score, 'n_steps:', n_steps, 'terminal:', terminal)
+        print('episode: ', game, 'score: %.2f' % score, 'average score: %.2f' % avg_score,'best score: %.2f' % best_score, 'n_steps:', n_steps, 'terminal:', terminal)
 # '''
 # %%
 import matplotlib.pyplot as plt
@@ -1044,73 +1048,73 @@ if config['train']:
 
 # print('Test score %.2f' % score)
 # %%
-import numpy as np
-import matplotlib.pyplot as plt
+# import numpy as np
+# import matplotlib.pyplot as plt
 
 
-def soft_clamp(x, low, high, softness=0.05):
-    """
-    Smooth alternative to np.clip.
-    softness → 0  →  hard clamp
-    softness → 1  →  almost linear
+# def soft_clamp(x, low, high, softness=0.05):
+#     """
+#     Smooth alternative to np.clip.
+#     softness → 0  →  hard clamp
+#     softness → 1  →  almost linear
     
-    Parameters
-    ----------
-    x         : array-like – input values
-    low/high  : float      – clamp interval
-    softness  : float      – fraction of the span that is “soft”
-    """
-    mid  = (high + low) / 2.0
-    span = (high - low) / 2.0               # positive
-    z    = (x - mid) / (span * softness)    # scale to ±1/softness
-    return mid + span * np.tanh(z)
+#     Parameters
+#     ----------
+#     x         : array-like – input values
+#     low/high  : float      – clamp interval
+#     softness  : float      – fraction of the span that is “soft”
+#     """
+#     mid  = (high + low) / 2.0
+#     span = (high - low) / 2.0               # positive
+#     z    = (x - mid) / (span * softness)    # scale to ±1/softness
+#     return mid + span * np.tanh(z)
 
 
-# -------------------------------------------------
-# Quick visual sanity-check
-# -------------------------------------------------
-x_max = 7*env.un_norm_kappa.item()/(2*np.pi*1e9)
-x_min = -7*env.un_norm_kappa.item()/(2*np.pi*1e9)
-print('Detuning range for soft clamp test:', x_min, ' to ', x_max, ' GHz')
-x = np.linspace(x_min, x_max, 10000)         # test inputs
-x = x[::-1]
-low, high = x_min, x_max
+# # -------------------------------------------------
+# # Quick visual sanity-check
+# # -------------------------------------------------
+# x_max = 7*env.un_norm_kappa.item()/(2*np.pi*1e9)
+# x_min = -7*env.un_norm_kappa.item()/(2*np.pi*1e9)
+# print('Detuning range for soft clamp test:', x_min, ' to ', x_max, ' GHz')
+# x = np.linspace(x_min, x_max, 10000)         # test inputs
+# x = x[::-1]
+# low, high = x_min, x_max
 
-hard   = np.clip(x, low, high)
-soft05 = soft_clamp(x, low, high, softness=0.05)
-soft10 = soft_clamp(x, low, high, softness=0.10)
-soft20 = soft_clamp(x, low, high, softness=0.35)
+# hard   = np.clip(x, low, high)
+# soft05 = soft_clamp(x, low, high, softness=0.05)
+# soft10 = soft_clamp(x, low, high, softness=0.10)
+# soft20 = soft_clamp(x, low, high, softness=0.35)
 
-plt.figure(figsize=(10, 6))
-plt.plot(x, hard,   label='Hard clamp',   color='black', linewidth=2)
-plt.plot(x, soft05, label='Soft clamp (0.05)')
-plt.plot(x, soft10, label='Soft clamp (0.10)')
-plt.plot(x, soft20, label='Soft clamp (0.3)')
-plt.axhline(low,  color='gray', ls='--')
-plt.axhline(high, color='gray', ls='--')
-plt.title('Hard clamp vs. Soft clamp')
-plt.xlabel('Input value')
-plt.ylabel('Clamped output')
-plt.legend()
-plt.grid(True)
-plt.show()
-
-# %%
-a = np.random.normal(0,1,size=(3900,))
-b = env.rescale_and_quantize(a, env.delta_omega_min, env.delta_omega_max, env.delta_omega_step)
-# insert env.del_omega_start as the first element of b
-b = np.insert(b, 0, env.del_omega_init.item()/(2*np.pi))
-b = np.cumsum(b)*1e-9
-# clamped_b = soft_clamp(b, low=min(env.del_omega_end.item()/(2*np.pi), env.del_omega_init.item()/(2*np.pi))*1e-9, high=max(env.del_omega_end.item()/(2*np.pi), env.del_omega_init.item()/(2*np.pi))*1e-9, softness=0.5)
 # plt.figure(figsize=(10, 6))
-# plt.plot(clamped_b, label='Soft clamp (0.5)', color='blue')
-# plt.plot(np.clip(b, min(env.del_omega_end.item()/(2*np.pi), env.del_omega_init.item()/(2*np.pi))*1e-9, max(env.del_omega_end.item()/(2*np.pi), env.del_omega_init.item()/(2*np.pi))*1e-9), label='Hard clamp', color='black', linestyle='--')
-# plt.axhline(env.del_omega_init.item()*1e-9/(2*np.pi),  color='gray', ls='--')
-# plt.axhline(env.del_omega_end.item()*1e-9/(2*np.pi), color='gray', ls='--')
-# plt.title('Detuning Range: '+str(np.round(env.del_omega_init.item()/(2*np.pi*1e9),2))+' to '+str(np.round(env.del_omega_end.item()/(2*np.pi*1e9),2))+' GHz')
-# plt.xlabel('Cumulative detuning (GHz)')
-# plt.ylabel('Clamped detuning (GHz)')
+# plt.plot(x, hard,   label='Hard clamp',   color='black', linewidth=2)
+# plt.plot(x, soft05, label='Soft clamp (0.05)')
+# plt.plot(x, soft10, label='Soft clamp (0.10)')
+# plt.plot(x, soft20, label='Soft clamp (0.3)')
+# plt.axhline(low,  color='gray', ls='--')
+# plt.axhline(high, color='gray', ls='--')
+# plt.title('Hard clamp vs. Soft clamp')
+# plt.xlabel('Input value')
+# plt.ylabel('Clamped output')
 # plt.legend()
 # plt.grid(True)
 # plt.show()
-# %%
+
+# # %%
+# a = np.random.normal(0,1,size=(3900,))
+# b = env.rescale_and_quantize(a, env.delta_omega_min, env.delta_omega_max, env.delta_omega_step)
+# # insert env.del_omega_start as the first element of b
+# b = np.insert(b, 0, env.del_omega_init.item()/(2*np.pi))
+# b = np.cumsum(b)*1e-9
+# # clamped_b = soft_clamp(b, low=min(env.del_omega_end.item()/(2*np.pi), env.del_omega_init.item()/(2*np.pi))*1e-9, high=max(env.del_omega_end.item()/(2*np.pi), env.del_omega_init.item()/(2*np.pi))*1e-9, softness=0.5)
+# # plt.figure(figsize=(10, 6))
+# # plt.plot(clamped_b, label='Soft clamp (0.5)', color='blue')
+# # plt.plot(np.clip(b, min(env.del_omega_end.item()/(2*np.pi), env.del_omega_init.item()/(2*np.pi))*1e-9, max(env.del_omega_end.item()/(2*np.pi), env.del_omega_init.item()/(2*np.pi))*1e-9), label='Hard clamp', color='black', linestyle='--')
+# # plt.axhline(env.del_omega_init.item()*1e-9/(2*np.pi),  color='gray', ls='--')
+# # plt.axhline(env.del_omega_end.item()*1e-9/(2*np.pi), color='gray', ls='--')
+# # plt.title('Detuning Range: '+str(np.round(env.del_omega_init.item()/(2*np.pi*1e9),2))+' to '+str(np.round(env.del_omega_end.item()/(2*np.pi*1e9),2))+' GHz')
+# # plt.xlabel('Cumulative detuning (GHz)')
+# # plt.ylabel('Clamped detuning (GHz)')
+# # plt.legend()
+# # plt.grid(True)
+# # plt.show()
+# # %%

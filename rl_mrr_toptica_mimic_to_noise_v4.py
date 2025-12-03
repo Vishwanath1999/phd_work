@@ -112,9 +112,9 @@ class RL_MRR_Env():
         # del_omega_init = self.sim_tensor['domega_init']
         del_omega_init = 7*self.un_norm_kappa
         self.del_omega_init = del_omega_init
-        self.del_omega_ul = 14*self.un_norm_kappa
+        self.del_omega_ul = 7*self.un_norm_kappa
         self.current_del_omega = del_omega_init
-        del_omega_end = -14*self.un_norm_kappa
+        del_omega_end = -9*self.un_norm_kappa
         self.del_omega_end = del_omega_end
 
         # del_omega_stop = self.sim_tensor['domega_stop']
@@ -165,7 +165,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(4e5)
+        self.max_steps = int(7e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -309,7 +309,7 @@ class RL_MRR_Env():
         self.t_sim_step = 0
 
         # self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
-        self.power = np.array([0.1])
+        self.power = np.array([0.05])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
 
         for ii in range(len(Ppmp)):
@@ -458,33 +458,7 @@ class RL_MRR_Env():
             return 0.0
         return width.item()
 
-    # @staticmethod
-    # def spectral_symm_torch(y_dbm: torch.Tensor, threshold: float = -58) -> float:
-    #     """
-    #     Computes the Pearson correlation coefficient between the left and right thresholded spectrum parts,
-    #     excluding the central mode, using torch.corrcoef.
-    #     """
-    #     center_idx = y_dbm.shape[0] // 2
-    #     mask = (y_dbm > threshold)
-    #     if torch.sum(mask).item() <= 1:
-    #         return 0.0
-    #     left_modes = mask[:center_idx].float()*y_dbm[:center_idx]
-    #     right_modes = mask[center_idx+1:].float()*y_dbm[center_idx+1:]
-    #     right_modes_flipped = torch.flip(right_modes, dims=[0])
-    #     min_len = min(left_modes.shape[0], right_modes_flipped.shape[0])
-    #     if min_len < 2:
-    #         return 0.0
-    #     left_modes = left_modes[-min_len:]
-    #     right_modes_flipped = right_modes_flipped[:min_len]
-    #     # Stack into 2xN to compute correlation matrix
-    #     stacked = torch.stack([left_modes, right_modes_flipped], dim=0)
-    #     corr_mat = torch.corrcoef(stacked)
-    #     corr = corr_mat[0, 1]
-    #     # check if corr is nan
-    #     if torch.isnan(corr):
-    #         print('Symm is NaN')
-    #         return 0.0
-    #     return corr.item()
+    
     @staticmethod
     def spectral_symm_torch(spectrum: torch.Tensor, floor: float=-55) -> float:
         n = spectrum.size(0)
@@ -509,18 +483,7 @@ class RL_MRR_Env():
 
         return corr_matrix[0, 1].item()
 
-    # @staticmethod
-    # def spectral_smoothness_torch(y_dbm: torch.Tensor, floor: float = -60) -> float:
-    #     """
-    #     Computes the mean squared difference between adjacent spectral bins,
-    #     excluding the central mode and bins below the floor threshold.
-    #     """
-    #     mask = torch.ones_like(y_dbm, dtype=torch.float)
-    #     mask[y_dbm.shape[0] // 2] = 0  # exclude central mode
-    #     y_dbm_masked = y_dbm * mask
-    #     y_diff = torch.diff(y_dbm_masked)
-    #     smoothness = torch.mean(y_diff ** 2) / 10.0
-    #     return smoothness.item()
+   
     
     @staticmethod
     def spectral_corr_torch(y_dbm: torch.Tensor, y_target_dbm: torch.Tensor) -> float:
@@ -695,19 +658,16 @@ class RL_MRR_Env():
         # if self.any_above_threshold_excluding_center(Ecav_dBm, threshold=-56) == False:
         #     reward = 1*np.mean(self.pcav_hist)
         # else:
-        reward = 2*env.spectral_width_dbm_torch(Ecav_dBm) + 2*env.spectral_corr_torch(Ecav_dBm, desired_spectrum_dBm) + 2*(env.spectral_symm_torch(Ecav_dBm)) #+ env.calculate_proximity_bonus_v2(self.r_hist)
-        # self.r_hist.append(reward)
-        # penalize for variance in pump power
-        reward -= 0.5*np.std(self.env_p_hist)
-        # if len(self.r_hist) > self.seq_len:
-        #     self.r_hist.pop(0)
-        # if self.current_del_omega + self.delta_theta/(self.tR)
+        reward = 2*env.spectral_width_dbm_torch(Ecav_dBm) + 2*(env.spectral_corr_torch(Ecav_dBm, desired_spectrum_dBm)-0.5) + 2*(env.spectral_symm_torch(Ecav_dBm)-0.25) #+ env.calculate_proximity_bonus_v2(self.r_hist)
+        # if self.any_above_threshold_excluding_center(Ecav_dBm, threshold=-56) == True:
+        #     reward -= 0.5*np.std(self.pcav_hist)
         # reward = 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 2*self.spectral_width_dbm_torch(Ecav_dBm)
         # 4*torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() + 
         
         if torch.linalg.vector_norm(desired_spectrum_dBm-Ecav_dBm, ord=2) < 50 or torch.corrcoef(torch.stack([desired_spectrum_dBm, Ecav_dBm]))[0,1].item() > 0.9:
             achieved = True
             reward += 2
+            
         else:
             achieved = False
 
@@ -733,8 +693,8 @@ def calc_detuning_distance(env, scale=1):
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.3, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
-                  delta_omega_min=-1e6, delta_omega_max=1e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='moderate',\
+                  delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
 # %%
@@ -744,14 +704,14 @@ desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
 desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
 # %%
 config = {
-    'input_dim': [env.seq_len, 300+3+2+1],
+    'input_dim': [env.seq_len, 300+1+2+1],#+2+1
     'n_actions': 2,
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_v3',
-    'batch_size': 128,
-    'dist': 'beta', # 'beta' or 'normal'
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_moderate_new',
+    'batch_size': 256,
+    'dist': 'normal', # 'beta' or 'normal'
     'train':True,
     'p_max': env.p_max,
     'p_min': env.p_min,
@@ -763,7 +723,7 @@ config = {
     'bidirectional': False,  # Whether to use bidirectional detuning
     'env_soft_clamp': env.soft_clamp_,  # Whether to use soft clamping in the environment
     'softness': env.softness,  # Softness parameter for soft clamping
-    'alpha_per': 0.65,  # Initial value of alpha for PER
+    'alpha_per': 0.6,  # Initial value of alpha for PER
     'beta_per': int(2e5),   # Initial value of beta for PER
     }
 # %%
@@ -797,16 +757,17 @@ if config['train']:
     acav_hist = []
     ecav_hist = []
     # p_pmp_hist = []
-    for i in range(n_games):
+    for game in range(n_games):
         score = 0
         done = False
         n_steps = 0
         state, acav, ecav, pcav = env.reset(10000)
         logs['pump power'] = env.power
         log_pcav = 10*np.log10(pcav + 1e-12) + 30
-        bounds = calc_detuning_distance(env, scale=3)
-        obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis], bounds*np.ones((env.seq_len,1)), 100*env.delta_theta.item()*np.ones((env.seq_len,1))),axis=1)
-        pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=i, desc='Episode %d' % i)
+        bounds = calc_detuning_distance(env, scale=5)
+        # obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10,env.power*np.ones((env.seq_len,1))/den,np.zeros((env.seq_len,1)), log_pcav[:,np.newaxis]),axis=1)#, bounds*np.ones((env.seq_len,1)), 100*env.delta_theta.item()*np.ones((env.seq_len,1))
+        obs = np.concatenate((ecav[:,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den*np.ones((env.seq_len,1)), bounds*np.ones((env.seq_len,1)), log_pcav[:,np.newaxis]),axis=1)#, bounds*np.ones((env.seq_len,1)), 100*env.delta_theta.item()*np.ones((env.seq_len,1))
+        pbar = tqdm(total=env.max_steps-env.init_steps_, ncols=120, position=game, desc='Episode %d' % game)
         acav_hist = []
         ecav_hist = []
         det_hist = []
@@ -821,10 +782,12 @@ if config['train']:
             logs['power (W)'] = env.power
             logs['detuning (MHz)'] = env.rescale_and_quantize(action[1], env.delta_omega_min, env.delta_omega_max, env.delta_omega_step)*1e-6
             logs['reward'] = reward  
+
             curr_pcav = np.sum(np.abs(acav_)**2,keepdims=True)
-            
-            bounds = calc_detuning_distance(env, scale=3)
-            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 3*env.current_del_omega/(env.del_omega_ul - env.del_omega_end), 10*np.log10(curr_pcav)+30, bounds, 100*env.delta_theta.item()*np.ones((1,))), axis=0)
+            logs['pcav (mW)'] = 1000*curr_pcav[0]
+            bounds = calc_detuning_distance(env, scale=5)
+            # ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, 3*env.current_del_omega/(env.del_omega_ul - env.del_omega_end), 10*np.log10(curr_pcav)+30), axis=0)#, bounds, 100*env.delta_theta.item()*np.ones((1,))
+            ecav_obs = np.concatenate((ecav_[-1,len(env.mu)//2-150:len(env.mu)//2+150]/10, env.power/den, bounds, 10*np.log10(curr_pcav)+30), axis=0)#, bounds, 100*env.delta_theta.item()*np.ones((1,))
             obs_ = np.concatenate((obs[1:], ecav_obs[np.newaxis,:]), axis=0)
             obs = obs_   
             agent.remember(obs, action, reward, obs_, terminal)
@@ -923,7 +886,7 @@ if config['train']:
             plt.xticks(fontsize=14)
             plt.yticks(fontsize=14)
             plt.tight_layout()
-            wandb.log({"ecav_modes": wandb.Image(fig)})
+            wandb.log({"ecav_spec": wandb.Image(fig)})
             plt.close(fig)
 
             correlations = np.array([np.corrcoef(ewg_dBm, desired_spectrum_dBm)[0,1] for ewg_dBm in ecav_hist])
@@ -951,7 +914,7 @@ if config['train']:
                 plt.axhspan(total[s], total[e], color='limegreen', alpha=0.3, label='Soliton existence range' if idx==0 else "")
             plt.xlabel(r'Time ($\mu s$)', fontsize=16)
             plt.ylabel('Freq (GHz)', fontsize=16)
-            plt.title('Detuning and Chaos Frequency Evolution', fontsize=16)
+            plt.title('Pump Detuning and Thermo-Optic Shift Evolution', fontsize=16)
             plt.grid()
             plt.legend(fontsize=14, loc='lower center', bbox_to_anchor=(0.5, -0.45), ncol=6, borderaxespad=0.)
             plt.xticks(fontsize=14)
@@ -1004,7 +967,7 @@ if config['train']:
         if avg_score > best_score:
             best_score = avg_score        
 
-        print('episode: ', i, 'score: %.2f' % score, 'average score: %.2f' % avg_score,'best score: %.2f' % best_score, 'n_steps:', n_steps, 'terminal:', terminal)
+        print('episode: ', game, 'score: %.2f' % score, 'average score: %.2f' % avg_score,'best score: %.2f' % best_score, 'n_steps:', n_steps, 'terminal:', terminal)
 # '''
 # %%
 import matplotlib.pyplot as plt

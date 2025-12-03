@@ -204,7 +204,7 @@ class AssymPrioritizedReplayBuffer:
             raise ValueError("Cannot sample from an empty buffer!")
 
         # Compute probabilities with alpha
-        scaled_priorities = (self.priorities[:max_mem] + self.per_epsilon)** self.alpha
+        scaled_priorities = (self.priorities[:max_mem] + self.epsilon)** self.alpha
         sample_probs = scaled_priorities / scaled_priorities.sum()
 
         indices = np.random.choice(max_mem, batch_size, p=sample_probs)
@@ -370,7 +370,7 @@ class CriticNetwork(nn.Module):
 class SACAgent:
     def __init__(self, input_dim, n_actions, run_name, alpha=3e-4, beta=3e-4, gamma=0.99, tau=0.005, 
                  mem_size=int(1e6), batch_size=256, max_action=1, dist='normal', eval_mode=False, fc_dim=128, use_per=False, bidir=False, use_priv=False,
-                 beta_steps=int(2e5), alpha_per=0.75):
+                 beta_steps=int(2e5), alpha_per=0.6):
         self.input_dim = input_dim
         self.n_actions = n_actions
         self.run_name = run_name
@@ -400,7 +400,7 @@ class SACAgent:
         self.target_critic_2 = CriticNetwork(input_dim, n_actions=n_actions, fc_dim=fc_dim, lr=beta, name=run_name+'_target_critic_2', bidir=bidir)
 
         self.update_network_parameters(tau=1)
-        self.target_ent_coef = -float(n_actions)
+        self.target_ent_coef = -float(n_actions)  # heuristic value from the SAC paper
         self.log_ent_coef = T.log(T.ones(1,device=self.actor.device)).requires_grad_(True)
         self.ent_coef_optimizer = optim.Adam([self.log_ent_coef], lr=0.5*alpha)
 
@@ -470,6 +470,9 @@ class SACAgent:
         q1 = self.critic_1(state, actions)
         q2 = self.critic_2(state, actions)
         critic_value = T.min(q1, q2).view(-1)
+        # if self.use_per:
+        #     actor_loss = T.mean(weights * (ent_coef * log_probs - critic_value)) # New addition for PER. Was not there before.
+        # else:
         actor_loss = (ent_coef * log_probs - critic_value).mean()
         self.actor.optimizer.zero_grad()
         actor_loss.backward()
@@ -488,7 +491,7 @@ class SACAgent:
 
         # Update priorities in PER
         if self.use_per:
-            td_errors = T.abs(q1.view(-1) - target_value).clamp(None,10)
+            td_errors = T.abs(q1.view(-1) - target_value).clamp(1e-6,10)
             self.memory.update_priorities(indices, td_errors.cpu().detach().numpy())
             
             # Update beta for PER

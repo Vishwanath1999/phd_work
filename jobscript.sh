@@ -33,7 +33,7 @@ module load cuda/12.4
 source my_env/bin/activate
 
 # Run your Python script within the virtual environment
-python rl_mrr_toptica_mimic_to_noise_v4.py
+python rl_mrr_toptica_mimic_to_noise_v5.py
 
 # Deactivate virtual environment after execution (optional)
 deactivate
