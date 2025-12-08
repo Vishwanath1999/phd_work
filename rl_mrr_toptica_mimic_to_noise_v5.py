@@ -719,7 +719,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuningv4',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuningv6',
     'batch_size': 256,
     'dist': 'normal', # 'beta' or 'normal'
     'train':True,
@@ -894,7 +894,7 @@ if config['train']:
             plt.xticks(fontsize=14)
             plt.yticks(fontsize=14)
             plt.tight_layout()
-            plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+            # plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
             wandb.log({"ecav_modes_hist": wandb.Image(fig)})
             plt.close(fig)
 
@@ -928,7 +928,7 @@ if config['train']:
             plt.legend(fontsize=14, loc='lower center', bbox_to_anchor=(0.5, -0.45), ncol=6, borderaxespad=0.)
             plt.xticks(fontsize=14)
             plt.yticks(fontsize=14)
-            plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+            # plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
             plt.tight_layout()
             wandb.log({"detuning_chaos_freq": wandb.Image(fig)})
             plt.close(fig)
