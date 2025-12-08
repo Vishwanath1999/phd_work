@@ -299,7 +299,7 @@ class RL_MRR_Env():
         err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
         raise RuntimeError(f"Convergence Error: {err}")
     
-    def reset(self, steps=None):
+    def reset(self, steps=None, p_pmp=0.16):
         print('Detuning range:', self.del_omega_init.item()/(2*np.pi*1e9), ' to ', self.del_omega_end.item()/(2*np.pi*1e9), ' GHz')
         self.state = self.DKS_init
         self.current_del_omega = self.del_omega_0
@@ -309,7 +309,7 @@ class RL_MRR_Env():
         self.t_sim_step = 0
 
         # self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
-        self.power = np.array([0.16])
+        self.power = np.array([p_pmp])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
 
         for ii in range(len(Ppmp)):
@@ -745,6 +745,7 @@ agent = SACAgent(input_dim=config['input_dim'], n_actions=config['n_actions'], a
                 beta_steps=config['beta_per'], alpha_per=config['alpha_per'])
 print(agent.actor)
 print(agent.critic_1)
+# %%
 agent.load_models()
 # %%
 def run_test_processes(run_id, save_dir):
@@ -784,7 +785,10 @@ def run_test_processes(run_id, save_dir):
 
     agent.load_models()
 
-    state, acav, ecav, pcav = env.reset(10000)
+    # select a random power between p_min and p_max for the environment
+    p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
+    p_pmp = np.round(p_pmp, 3)
+    state, acav, ecav, pcav = env.reset(10000, p_pmp=p_pmp[0])
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -828,12 +832,13 @@ def run_test_processes(run_id, save_dir):
     desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
     desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
     desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
+    mod_pow = str(env.power[0]).replace('.','_')
 
     if terminal == False:
         print(f'Run {run_id} completed with score {score} at step {idx}')
-        np.save(os.path.join(save_dir, str(run_id) + '_p_cav.npy'), np.array(pcav_hist))
-        np.save(os.path.join(save_dir, str(run_id) + '_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
-        np.save(os.path.join(save_dir, str(run_id) + '_reward_history.npy'), np.array(r_hist))
+        np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+ '_p_cav.npy'), np.array(pcav_hist))
+        np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
+        np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_reward_history.npy'), np.array(r_hist))
         # Prepare spectra for plotting
         freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
         obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
@@ -969,6 +974,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.figure(figsize=(10, 6))
     plt.plot(time_axis, detuning_array*1e-9, linewidth=1.5, label='Pump detuning')
     plt.plot(time_axis, np.array(delta_theta)*1e-9, linewidth=1.5 , label=r'$f_{\Theta}$')
+    plt.plot(time_axis, detuning_array*1e-9 + np.array(delta_theta)*1e-9, linewidth=1.5 , label=r'$\Delta f_{eff}$')
     plt.xlabel(r'Time ($\mu$s)', fontsize=20)
     plt.ylabel('Freq (GHz)', fontsize=20)
     plt.grid()
@@ -1276,7 +1282,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'new')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'random_pow')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
