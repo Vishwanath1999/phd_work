@@ -786,9 +786,9 @@ def run_test_processes(run_id, save_dir):
     agent.load_models()
 
     # select a random power between p_min and p_max for the environment
-    p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
-    p_pmp = np.round(p_pmp, 3)
-    state, acav, ecav, pcav = env.reset(10000, p_pmp=p_pmp[0])
+    # p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
+    # p_pmp = np.round(p_pmp, 3)
+    state, acav, ecav, pcav = env.reset(10000, p_pmp=0.18)
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -839,6 +839,8 @@ def run_test_processes(run_id, save_dir):
         np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+ '_p_cav.npy'), np.array(pcav_hist))
         np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
         np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_reward_history.npy'), np.array(r_hist))
+        # save detuning history
+        np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_detuning_history.npy'), np.array(det_hist)*1e-9)
         # Prepare spectra for plotting
         freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
         obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
@@ -1303,3 +1305,4 @@ if __name__ == '__main__':
     freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
     reward_files = sorted(glob.glob(os.path.join(save_dir, '*_reward_history.npy')))
     plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir)
+# %%

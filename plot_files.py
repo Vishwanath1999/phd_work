@@ -9,7 +9,7 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa
 from matplotlib import cm
 
 # ====== USER OPTIONS ======
-SAVE_PLOTS = False  # <--- set False if you do NOT want to save figures
+SAVE_PLOTS = True  # <--- set False if you do NOT want to save figures
 data_dir = './results/mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuning_v6/high/random_pow'  # <--- set to your folder with *_p_cav.npy, *_detuning_theta_sum.npy
 pump_min_W = 0.12
 pump_max_W = 0.18
@@ -199,12 +199,92 @@ def plot_phase_boundaries(cw_counts, mi_counts, dks_counts,
 
 # ---------- plot 2: fractional DKS 2D ----------
 
-def plot_fractional_DKS(cw_counts, mi_counts, dks_counts,
-                        pump_edges, det_edges,
-                        flip_detuning=True, save_path=None):
+# def plot_fractional_DKS(cw_counts, mi_counts, dks_counts,
+#                         pump_edges, det_edges,
+#                         flip_detuning=True, save_path=None):
+#     total = cw_counts + mi_counts + dks_counts
+#     with np.errstate(divide='ignore', invalid='ignore'):
+#         f_dks = np.where(total > 0, dks_counts / total, 0.0)
+
+#     if flip_detuning:
+#         det_edges = det_edges[::-1]
+#         f_dks = f_dks[:, ::-1]
+
+#     extent = [det_edges[0], det_edges[-1], pump_edges[0], pump_edges[-1]]
+#     fig, ax = plt.subplots(figsize=(7, 6))
+#     im = ax.imshow(f_dks, origin="lower", aspect="auto",
+#                    extent=extent, vmin=0.0, vmax=1.0, cmap="viridis")
+
+#     ax.set_xlabel("Effective detuning (GHz)")
+#     ax.set_ylabel("Pump power P_pmp (mW)")
+#     ax.set_title("Fraction of time in DKS state")
+
+#     ny, nx = f_dks.shape
+#     x = np.linspace(det_edges[0], det_edges[-1], nx)
+#     y = np.linspace(pump_edges[0], pump_edges[-1], ny)
+#     cs = ax.contour(x, y, f_dks, levels=[0.25, 0.5, 0.75],
+#                     colors="white", linewidths=1.2)
+#     ax.clabel(cs, fmt="%.2f", colors="white", fontsize=9)
+
+#     cbar = plt.colorbar(im, ax=ax)
+#     cbar.set_label("f_DKS")
+#     plt.tight_layout()
+#     if SAVE_PLOTS and save_path is not None:
+#         fig.savefig(save_path, dpi=200)
+#     return fig
+
+
+# # ---------- plot 3: fractional DKS 3D ----------
+
+# def plot_fractional_DKS_3d(cw_counts, mi_counts, dks_counts,
+#                            pump_edges, det_edges, save_path=None):
+#     total = cw_counts + mi_counts + dks_counts
+#     with np.errstate(divide='ignore', invalid='ignore'):
+#         f_dks = np.where(total > 0, dks_counts / total, 0.0)
+
+#     pump_centers = 0.5 * (pump_edges[:-1] + pump_edges[1:])
+#     det_centers  = 0.5 * (det_edges[:-1] + det_edges[1:])
+#     D, P = np.meshgrid(det_centers, pump_centers)
+
+#     fig = plt.figure(figsize=(8, 6))
+#     ax = fig.add_subplot(111, projection='3d')
+#     surf = ax.plot_surface(D, P, f_dks, cmap=cm.viridis,
+#                            linewidth=0, antialiased=True)
+#     ax.set_xlabel("Effective detuning (GHz)")
+#     ax.set_ylabel("Pump power P_pmp (mW)")
+#     ax.set_zlabel("f_DKS")
+#     ax.set_title("3D DKS probability landscape")
+#     fig.colorbar(surf, shrink=0.6, aspect=12, label="f_DKS")
+#     # add some space between zlabel and colorbar
+#     ax.zaxis.labelpad = 15
+#     plt.tight_layout()
+#     if SAVE_PLOTS and save_path is not None:
+#         fig.savefig(save_path, dpi=200)
+#     return fig
+from scipy.ndimage import gaussian_filter
+
+def compute_f_dks(cw_counts, mi_counts, dks_counts, smooth_sigma=0.0):
+    """
+    Compute f_DKS = dks / (cw+mi+dks), optionally smoothed with a 2D Gaussian.
+    smooth_sigma is in units of bins (e.g. 0.8–1.2 works well).
+    """
     total = cw_counts + mi_counts + dks_counts
     with np.errstate(divide='ignore', invalid='ignore'):
         f_dks = np.where(total > 0, dks_counts / total, 0.0)
+
+    if smooth_sigma > 0:
+        f_dks = gaussian_filter(f_dks, sigma=smooth_sigma, mode='nearest')
+
+    return f_dks
+
+
+def plot_fractional_DKS(cw_counts, mi_counts, dks_counts,
+                        pump_edges, det_edges,
+                        flip_detuning=True, smooth_sigma=0.8,
+                        save_path=None):
+    # compute (and smooth) f_DKS
+    f_dks = compute_f_dks(cw_counts, mi_counts, dks_counts,
+                          smooth_sigma=smooth_sigma)
 
     if flip_detuning:
         det_edges = det_edges[::-1]
@@ -234,13 +314,12 @@ def plot_fractional_DKS(cw_counts, mi_counts, dks_counts,
     return fig
 
 
-# ---------- plot 3: fractional DKS 3D ----------
-
 def plot_fractional_DKS_3d(cw_counts, mi_counts, dks_counts,
-                           pump_edges, det_edges, save_path=None):
-    total = cw_counts + mi_counts + dks_counts
-    with np.errstate(divide='ignore', invalid='ignore'):
-        f_dks = np.where(total > 0, dks_counts / total, 0.0)
+                           pump_edges, det_edges,
+                           smooth_sigma=0.8, save_path=None):
+    # same smoothed f_DKS
+    f_dks = compute_f_dks(cw_counts, mi_counts, dks_counts,
+                          smooth_sigma=smooth_sigma)
 
     pump_centers = 0.5 * (pump_edges[:-1] + pump_edges[1:])
     det_centers  = 0.5 * (det_edges[:-1] + det_edges[1:])
@@ -251,13 +330,16 @@ def plot_fractional_DKS_3d(cw_counts, mi_counts, dks_counts,
     surf = ax.plot_surface(D, P, f_dks, cmap=cm.viridis,
                            linewidth=0, antialiased=True)
     ax.set_xlabel("Effective detuning (GHz)")
-    ax.set_ylabel("Pump power P_pmp (mW)")
+    ax.set_ylabel("Pump power (mW)")
     ax.set_zlabel("f_DKS")
     ax.set_title("3D DKS probability landscape")
-    fig.colorbar(surf, shrink=0.6, aspect=12, label="f_DKS")
+    fig.colorbar(surf, shrink=0.6, aspect=12, label="Prob(DKS)")
+    ax.zaxis.labelpad = 15
+    plt.tight_layout()
     if SAVE_PLOTS and save_path is not None:
         fig.savefig(save_path, dpi=200)
     return fig
+
 
 
 # ---------- plot 4: time-sample scatter ----------
@@ -448,7 +530,7 @@ def plot_regime_contour_only(phase_idx, pump_edges, det_edges,
 # ---------- main driver ----------
 # %%
 if __name__ == "__main__":
-    os.makedirs(data_dir, exist_ok=True)
+    # os.makedirs(data_dir, exist_ok=True)
 
     cw_c, mi_c, dks_c, (pump_edges, det_edges) = build_phase_counts_time_resolved(
         data_dir,
@@ -462,7 +544,9 @@ if __name__ == "__main__":
         jitter_window=10,
         jitter_rel_thresh=0.02,
     )
-
+    # create a separate subfolder for plots
+    data_dir = os.path.join(data_dir, "analysis plots")
+    os.makedirs(data_dir, exist_ok=True)
     phase_idx = phase_index_from_counts(cw_c, mi_c, dks_c, smooth_sigma=0.6)
 
     plot_phase_boundaries(
