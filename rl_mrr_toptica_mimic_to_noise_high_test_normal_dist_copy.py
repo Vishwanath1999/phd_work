@@ -1268,7 +1268,7 @@ def plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir):
     ax1.fill_between(x, mu_reward - sd_reward, mu_reward + sd_reward, color='green', alpha=0.25, label='Reward ±1σ')
     ax1.set_xlabel(r'Time ($\mu s$)', fontsize=20)
     ax1.set_ylabel(r'Reward', fontsize=20)
-    ax1.tick_params(axis='y', labelcolor='green')
+    # ax1.tick_params(axis='y', labelcolor='green')
     ax1.grid(True, alpha=0.4)
     fig.tight_layout()
     ax1.tick_params(axis='x', labelsize=20)
