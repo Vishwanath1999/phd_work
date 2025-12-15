@@ -1,4 +1,3 @@
-# %%
 import torch
 import numpy as np
 from scipy.io import loadmat, savemat
@@ -139,9 +138,9 @@ alpha = k0+kext
 
 un_norm_kappa = 2*torch.pi*(fpmp[0]/Q0 + fpmp[0]/Qc)
 
-del_omega_init = 10*un_norm_kappa#sim_tensor['domega_init']
-del_omega_end = -5*un_norm_kappa#sim_tensor['domega_end']
-del_omega_stop = -5*un_norm_kappa#sim_tensor['domega_stop']
+del_omega_init = 7*un_norm_kappa#sim_tensor['domega_init']
+del_omega_end = -7*un_norm_kappa#sim_tensor['domega_end']
+del_omega_stop = -7*un_norm_kappa#sim_tensor['domega_stop']
 ind_sweep = sim_tensor['ind_pump_sweep'] 
 t_end = sim_tensor['Tscan']
 Dint = disp_tensor['Dint_new']#[0]
@@ -169,7 +168,7 @@ t_end = t_end*tR
 t_ramp = t_end
 
 # %%
-Nt = torch.tensor([400000], dtype=torch.int)[0]#int(4e5)#torch.round(t_ramp/tR/dt)[0].int()
+Nt = torch.tensor([1400000], dtype=torch.int)[0]#int(4e5)#torch.round(t_ramp/tR/dt)[0].int()
 theta = torch.linspace(0, 2*torch.pi, len(mu), device=device)
 del_omega_tot = torch.abs(del_omega_end)+torch.abs(del_omega_init)
 del_omega_perc = -1*torch.sign(del_omega_end+del_omega_init)*(torch.abs(del_omega_end+del_omega_init)/2)/del_omega_tot
@@ -233,10 +232,10 @@ def Fdrive(it, A_in):
         Force = Force - 1j*A_in[ii]*torch.exp(1j*sigma)
     return Force + Noise(h_bar, omega1, int(len(mu)), device)
 
-def SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val, delta_theta):
+def SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val, delta_theta, del_omega_all):
     # if it*num_probe/Nt > param['probe']:
     saved_data['u_probe'][param['probe'],:] = u0
-    saved_data['detuning'][param['probe']] = del_omega_all[0][it]
+    saved_data['detuning'][param['probe']] = del_omega_all[0,it]
     saved_data['t_sim'][param['probe']] = t_sim[it]
     saved_data['driving_force'][param['probe'],:] = Fdrive_val
     saved_data['delta_theta'][param['probe']] = delta_theta
@@ -320,7 +319,7 @@ def ssfm_step(A0: torch.Tensor, it: int, alpha: torch.Tensor, Dint_shift: torch.
     err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
     raise ValueError(f"Convergence Error: {err}")
 
-def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton='high'):
+def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton='strong'):
     param = dict()
     param['tol'] = 1e-3
     param['max_iter'] = max_iter
@@ -341,11 +340,12 @@ def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton
         xi = -1.2e5         # Thermo-optic coefficient (W⁻¹s⁻¹)
     else:
         raise ValueError("Invalid value for 'ton'. Choose from 'weak', 'moderate', or 'strong'.")
-
+    # print(f"Thermal response type: {ton}, xi: {xi}")
+    del_omega_all_to = del_omega_all.clone()
     for it in iterator:
-        del_omega_all[0, it] += delta_theta/(tR)
+        del_omega_all_to[0, it] += delta_theta/(tR)
         Fdrive_val = Fdrive(it, A_in)
-        u0 = ssfm_step(u0, it, alpha, Dint_shift, del_omega_all, tR, gamma, L, 
+        u0 = ssfm_step(u0, it, alpha, Dint_shift, del_omega_all_to, tR, gamma, L, 
                        max_iter, tol, dt, kext, Fdrive_val, A_prop)
         # Update thermal detuning
         P_avg = torch.mean(torch.abs(u0)**2)  # Compute average power
@@ -361,7 +361,7 @@ def MainSolver(Nt, saved_data, u0, del_omega_all, A_in, show_progress=False, ton
                 step_num = it
                 flag=True
         if it*num_probe/Nt > param['probe']:
-            param = SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val, delta_theta)
+            param = SaveStatus_Callback(it, saved_data, u0, param, Fdrive_val, delta_theta, del_omega_all)
     return saved_data, step_num / (Nt.item()/2)
     # SaveData(saved_data,name)
 
@@ -387,7 +387,7 @@ def rescale_power(power, lower_limit=0.05, upper_limit=0.2, step_size=0.001):
         quantized_value = np.round(value / step_size) * step_size
         return quantized_value
 # %%
-def rescale_and_quantize(action, lower_limit=-1e6, upper_limit=1e6, step_size=1e4):
+def rescale_and_quantize(action, lower_limit=-2e6, upper_limit=2e6, step_size=1e4):
     """
     Rescale input in [-1, 1] to [lower_limit, upper_limit] and quantize to step_size.
 
@@ -490,7 +490,7 @@ def reset_saved_data():
 # spec_dBm = 10 * np.log10(np.abs(Ecav)**2) + 30
 # spec_dBm = np.clip(spec_dBm, -60, 10)  # Clip to avoid extreme values
 # %%
-def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='high', save_dir=None, save_plots=False, run_id=0):
+def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='strong', save_dir=None, save_plots=False,run_id=0):
     """
     Main function to run the LLE simulation with given parameters.
     
@@ -545,18 +545,18 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='high', save_dir=
         plt.figure(figsize=(14, 4))
         plt.imshow(Acav_abs, aspect='auto', cmap='jet', extent=[0,Nt*tR.item()*1e6, -tR.item()*1e12/2, tR.item()*1e12/2], origin='lower')
         cbar = plt.colorbar()
-        cbar.ax.tick_params(labelsize=16)
-        cbar.set_label(r'Power $(mW)$', fontsize=16)
+        cbar.ax.tick_params(labelsize=20)
+        cbar.set_label(r'Power $(mW)$', fontsize=20)
         formatter = ticker.ScalarFormatter(useMathText=True)
         formatter.set_scientific(True)
         formatter.set_powerlimits((-1, 1))
-        plt.gca().xaxis.set_major_formatter(formatter)
-        plt.title(ton + ' themal effect', fontsize=18)
-        plt.xlabel(r'Time $(\mu s)$', fontsize=18)
-        plt.ylabel(r'$t_R$ (ps)', fontsize=18)
+        # plt.gca().xaxis.set_major_formatter(formatter)
+        # plt.title(ton + ' themal effect', fontsize=18)
+        plt.xlabel(r'Time $(\mu s)$', fontsize=20)
+        plt.ylabel(r'Fast time (ps)', fontsize=20)
         plt.tight_layout()
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
+        plt.xticks(fontsize=20)
+        plt.yticks(fontsize=20)
         # plt.savefig('./GA_results_corr_coeff/field_amplitude_ton_' + ton + '.png')
         # plt.savefig('./GA_results_corr_coeff/field_amplitude_ton_' + ton + '.svg', format='svg')
         # save images in save_dir
@@ -568,13 +568,16 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='high', save_dir=
 
         plt.figure(figsize=(10,6))
         x = np.linspace(0, Nt*tR.item()*1e6, len(np_dict['detuning']))
-        plt.plot(x,np_dict['delta_theta']*FSR.item()/(2*torch.pi*1e9), linewidth=1.5)
-        plt.xlabel(r'Time $(\mu s)$', fontsize=16)
-        plt.ylabel(r'$f _{\Theta}$ (GHz)', fontsize=16)
-        plt.xticks(fontsize=16)
-        plt.title(ton + ' thermal effect', fontsize=18)
-        plt.yticks(fontsize=16)
-        plt.gca().xaxis.set_major_formatter(formatter)
+        plt.plot(x,np_dict['delta_theta']*FSR.item()/(2*torch.pi*1e9), linewidth=1.5, label=r'$f _{\Theta}$')
+        plt.plot(x,np_dict['detuning']/(2*torch.pi*1e9), linewidth=1.5, label=r'$\Delta f_{pmp}$')
+        plt.plot(x,(np_dict['delta_theta']*FSR.item() + np_dict['detuning'])/(2*torch.pi*1e9), linewidth=1.5, label=r'$\Delta f_{eff}$')
+        plt.xlabel(r'Time $(\mu s)$', fontsize=20)
+        plt.ylabel('Freq. (GHz)', fontsize=20)
+        plt.xticks(fontsize=20)
+        plt.legend(fontsize=18)
+        # plt.title(ton + ' thermal effect', fontsize=18)
+        plt.yticks(fontsize=20)
+        # plt.gca().xaxis.set_major_formatter(formatter)
         plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
         # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.png')
         # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.svg', format='svg')
@@ -584,14 +587,53 @@ def LLE(fine, dwell_steps, pump_power, progress_bar=False, ton='high', save_dir=
         plt.show()
         plt.close()
 
+        plt.figure(figsize=(10,6))
+        x = np.linspace(0, Nt*tR.item()*1e6, len(np_dict['detuning']))
+        plt.plot(x,np_dict['delta_theta']*FSR.item()/un_norm_kappa.item(), linewidth=1.5, label=r'$f _{\Theta}$')
+        plt.plot(x,np_dict['detuning']/un_norm_kappa.item(), linewidth=1.5, label=r'$\Delta f_{pmp}$')
+        plt.plot(x,(np_dict['delta_theta']*FSR.item() + np_dict['detuning'])/un_norm_kappa.item(), linewidth=1.5, label=r'$\Delta f_{eff}$')
+        plt.xlabel(r'Time $(\mu s)$', fontsize=20)
+        plt.ylabel(r'Freq. ($\times \kappa$)', fontsize=20)
+        plt.xticks(fontsize=20)
+        plt.legend(fontsize=18)
+        # plt.title(ton + ' thermal effect', fontsize=18)
+        plt.yticks(fontsize=20)
+        # plt.gca().xaxis.set_major_formatter(formatter)
+        plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
+        # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.png')
+        # plt.savefig('./GA_results_corr_coeff/delta_theta_ton_' + ton + '.svg', format='svg')
+        if save_dir is not None:
+            plt.savefig(os.path.join(save_dir, 'delta_theta_ton_kappa_' + ton + '.png'))
+            plt.savefig(os.path.join(save_dir, 'delta_theta_ton_kappa_' + ton + '.svg'), format='svg')
+        plt.show()
+        plt.close()
+
+        # plot detuning
+        # plt.figure(figsize=(10,6))
+        # x = np.linspace(0, Nt*tR.item()*1e6, len(np_dict['detuning']))
+        # plt.plot(x,np_dict['detuning']/(2*torch.pi), linewidth=1.5)
+        # plt.xlabel(r'Time $(\mu s)$', fontsize=20)
+        # plt.ylabel(r'$\Delta f_{pmp}$ (GHz)', fontsize=20)
+        # plt.xticks(fontsize=20)
+        # plt.yticks(fontsize=20)
+        # plt.gca().xaxis.set_major_formatter(formatter)
+        # plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
+        # # plt.savefig('./GA_results_corr_coeff/detuning_ton_' + ton + '.png')
+        # # plt.savefig('./GA_results_corr_coeff/detuning_ton_' + ton + '.svg', format='svg')
+        # if save_dir is not None:
+        #     plt.savefig(os.path.join(save_dir, 'detuning_ton_' + ton + '.png'))
+        #     plt.savefig(os.path.join(save_dir, 'detuning_ton_' + ton + '.svg'), format='svg')
+        # plt.show()
+        # plt.close()
+
         # plot pcav
         plt.figure(figsize=(10,6))
         plt.plot(x,np.sum(Acav_abs, axis=0), linewidth=1.5)
-        plt.xlabel(r'Time $(\mu s)$', fontsize=16)
-        plt.ylabel(r'$P_{cav}$ (mW)', fontsize=16)
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
-        plt.gca().xaxis.set_major_formatter(formatter)
+        plt.xlabel(r'Time $(\mu s)$', fontsize=20)
+        plt.ylabel(r'$P_{cav}$ (mW)', fontsize=20)
+        plt.xticks(fontsize=20)
+        plt.yticks(fontsize=20)
+        # plt.gca().xaxis.set_major_formatter(formatter)
         plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
         # plt.savefig('./GA_results_corr_coeff/pcav_ton_' + ton + '.png')
         # plt.savefig('./GA_results_corr_coeff/pcav_ton_' + ton + '.svg', format='svg')
@@ -636,7 +678,7 @@ def fitness_correlation(spec, num_step):
     correlation = np.corrcoef(spec, desired_spectrum_dBm)[0, 1]
     # center_idx = len(spec) // 2
     # mask = y
-    return 4*(1-correlation) + num_step
+    return 4*(1-correlation) #+ num_step
 
 def objective(X):
     """
@@ -645,7 +687,7 @@ def objective(X):
     """
     fine = X[0]  # GA passes an array
     dwell_steps = 100#int(X[1])  # Convert to integer for dwell steps
-    spec, num_step = LLE(fine, dwell_steps, X[1])
+    spec, num_step = LLE(fine, dwell_steps, X[1], ton='strong')
     return fitness_correlation(spec, num_step)  # Return the fitness value
 # %%
 import os
@@ -755,7 +797,7 @@ def run_single_simulation_set(run_id, fine, dwell_steps, pump_power, base_save_d
 if __name__ == '__main__':
     mp.set_start_method('spawn', force=True)
     plt.style.use('physrev.mplstyle')
-    run_name = 'GA_LLE_optim_corr_coeff_num_steps'
+    run_name = 'GA_LLE_optim_corr_coeff_num_steps_strong'
     save_dir = os.path.join(os.getcwd(), run_name)
     # run the simulation with best params
     # load the best solution from file

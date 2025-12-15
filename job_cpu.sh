@@ -25,7 +25,7 @@
 source fdtd_py/bin/activate
 
 ### Run optimization
-python torch_GA_copy_3.py
+python torch_GA_copy_4.py
 
 # deactivate virtual environment (if applicable)
 deactivate

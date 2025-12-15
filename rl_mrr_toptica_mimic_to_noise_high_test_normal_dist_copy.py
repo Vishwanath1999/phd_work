@@ -791,7 +791,7 @@ def run_test_processes(run_id, save_dir):
     # select a random power between p_min and p_max for the environment
     # p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
     # p_pmp = np.round(p_pmp, 3)
-    state, acav, ecav, pcav = env.reset(10000, p_pmp=0.18)
+    state, acav, ecav, pcav = env.reset(10000, p_pmp=0.16)
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -1288,7 +1288,7 @@ import warnings
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'test_smooth')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'new_ctrl_freq')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
