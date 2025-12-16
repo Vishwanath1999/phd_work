@@ -791,7 +791,7 @@ def run_test_processes(run_id, save_dir):
     # select a random power between p_min and p_max for the environment
     # p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
     # p_pmp = np.round(p_pmp, 3)
-    state, acav, ecav, pcav = env.reset(10000, p_pmp=0.16)
+    state, acav, ecav, pcav = env.reset(10000, p_pmp=0.18)
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -839,19 +839,19 @@ def run_test_processes(run_id, save_dir):
     desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)
     mod_pow = str(env.power[0]).replace('.','_')
 
-    # if terminal == False:
-    print(f'Run {run_id} completed with score {score} at step {idx}')
-    np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+ '_p_cav.npy'), np.array(pcav_hist))
-    np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
-    np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_reward_history.npy'), np.array(r_hist))
-    # Prepare spectra for plotting
-    freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
-    obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
-    
-    plot_all_results(
-        env, save_dir, run_id, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta,
-        np.array(action_hist), freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect
-    )
+    if terminal == False:
+        print(f'Run {run_id} completed with score {score} at step {idx}')
+        np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+ '_p_cav.npy'), np.array(pcav_hist))
+        np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_detuning_theta_sum.npy'), np.array(det_hist)*1e-9 + np.array(delta_theta)*1e-9)
+        np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_reward_history.npy'), np.array(r_hist))
+        # Prepare spectra for plotting
+        freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
+        obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
+        
+        plot_all_results(
+            env, save_dir, run_id, pcav_hist, acav_hist, e_wg_hist, r_hist, det_hist, delta_theta,
+            np.array(action_hist), freq, ecav, obtained_spectrum, desired_spectrum_dBm, env.thermal_effect
+        )
     # if terminal:
     #     # create a subflolder for failed runs called 'failed_runs'
     #     failed_dir = os.path.join(save_dir, 'failed_runs')
@@ -939,6 +939,25 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.svg'), format='svg')
+    plt.close()
+
+    plt.figure(figsize=(14,4))
+    spectral_phase = np.angle(spectrum, deg=False)
+    # unwrap phase along time axis
+    # spectral_phase = np.unwrap(spectral_phase, axis=1)
+    plt.imshow(spectral_phase, aspect='auto', cmap='jet',
+               extent=[time_axis[0], time_axis[-1], env.mu.min().item(), env.mu.max().item()])
+    plt.xlabel(r'Time ($\mu$s)', fontsize=20)
+    # plt.ylabel(r'$\mu$' +'(rel)', fontsize=20)
+    plt.ylabel('Mode number', fontsize=20)
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=20)
+    cbar.set_label(r'Phase (rad)', fontsize=20)
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_phase_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_phase_all_ctrl.svg'), format='svg')
     plt.close()
 
     # 4. Ewg spectrum evolution
@@ -1288,7 +1307,7 @@ import warnings
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'new_ctrl_freq')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'phase_plot')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch

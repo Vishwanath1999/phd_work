@@ -865,6 +865,8 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     import os
     import numpy as np
     import fractions
+    import matplotlib.cm as cm
+    import matplotlib.colors as mcolors
 
     plt.style.use('physrev.mplstyle')
     mod_pow = str(env.power[0]).replace('.','_')
@@ -883,6 +885,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()    
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_spec_all_ctrl.pdf'), format='pdf')
     plt.close()
 
     plt.figure(figsize=(10, 6))
@@ -896,6 +899,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()    
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_zoom.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_zoom.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_pcav_zoom.pdf'), format='pdf')
     plt.close()
 
     # 2. Acav time evolution
@@ -916,6 +920,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_spec_all_ctrl.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_spec_all_ctrl.pdf'), format='pdf')
     plt.close()
 
     # 3. Spectrum evolution (FFT of acav_hist)
@@ -936,6 +941,34 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.pdf'), format='pdf')
+    plt.close()
+
+    # 3b. Spectrum phase evolution (FFT of acav_hist)
+    plt.figure(figsize=(14,4))
+    # find the phase of the 300 modes centered around the central moded
+    spec_x,_ = spectrum.shape
+    spectral_phase = np.angle(spectrum, deg=False)
+    # subtract the phase of the central mode
+    central_mode_phase = spectral_phase[spec_x//2,:]
+    spectral_phase = spectral_phase - central_mode_phase[np.newaxis,:]
+    # unwrap phase along mode axis
+    spectral_phase = np.unwrap(spectral_phase, axis=0, period = 2*np.pi)
+    spectral_phase_grad = np.gradient(spectral_phase, axis=0)
+    plt.imshow(spectral_phase_grad, aspect='auto', cmap='jet',
+               extent=[time_axis[0], time_axis[-1], env.mu.min().item(), env.mu.max().item()])
+    plt.xlabel(r'Time ($\mu$s)', fontsize=20)
+    # plt.ylabel(r'$\mu$' +'(rel)', fontsize=20)
+    plt.ylabel('Mode number', fontsize=20)
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=20)
+    cbar.set_label(r'$d\phi _m / d \mu$ (rad)', fontsize=20)
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_phase_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_phase_all_ctrl.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_phase_all_ctrl.pdf'), format='pdf')
     plt.close()
 
     # 4. Ewg spectrum evolution
@@ -956,6 +989,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.pdf'), format='pdf')
     plt.close()
 
     # 5. Reward plot
@@ -969,6 +1003,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_rewards_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_rewards_spec_all_ctrl.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_rewards_spec_all_ctrl.pdf'), format='pdf')
     plt.close()
 
     # 8. Detuning array (GHz)
@@ -990,6 +1025,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl.pdf'), format='pdf')
     plt.close()
 
     # 9. Detuning in kappa units
@@ -1005,10 +1041,10 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.grid()
     plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
-    plt.legend(fontsize=20)
+    plt.legend(fontsize=20, loc='upper right', framealpha=0.7)
 
     ymin, ymax = plt.ylim()
-    yticks = np.linspace(ymin, ymax, 5)
+    yticks = np.linspace(ymin, ymax, 7)
     def frac_label(val):
         if val == 0:
             return r"$0$"
@@ -1018,10 +1054,23 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
             return rf"${val:.1f}\,\kappa$"
     ytick_labels = [frac_label(y) for y in yticks]
     plt.yticks(yticks, ytick_labels, fontsize=20)
+
+    # color the ytick labels from blue (top) to red (bottom)
+    ax = plt.gca()
+    norm = mcolors.Normalize(vmin=ymin, vmax=ymax)
+    cmap = cm.get_cmap('coolwarm')   # blue→red
+
+    for ytick, label in zip(yticks, ax.get_yticklabels()):
+        # note: ymax (top) should be blue, ymin (bottom) red
+        # coolwarm maps low→blue, high→red, so use norm on (ymin+ymax - ytick)
+        val_for_color = ymin + ymax - ytick
+        label.set_color(cmap(norm(val_for_color)))
+
     plt.title('Pump Detuning', fontsize=22, fontweight='bold')
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa.pdf'), format='pdf')
     plt.close()
 
     # Detuning in kappa units (zoomed)
@@ -1044,6 +1093,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa_zoom.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa_zoom.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_spec_all_ctrl_kappa_zoom.pdf'), format='pdf')
     plt.close()
 
     # # 10. Pump power
@@ -1058,6 +1108,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     # plt.tight_layout()
     # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.png'))
     # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.svg'), format='svg')
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_actions_power_spec_all_ctrl.pdf'), format='pdf')
     # plt.close()
 
     # 12. Detuning vs delta theta
@@ -1071,6 +1122,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_detuning_delta_theta_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_detuning_delta_theta_spec_all_ctrl.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_detuning_delta_theta_spec_all_ctrl.pdf'), format='pdf')
     plt.close()
 
     # 6. Obtained vs desired spectrum (mode index)
@@ -1090,6 +1142,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_modes.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_modes.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_modes.pdf'), format='pdf')
     plt.close()
 
     # 7. Obtained vs desired spectrum (frequency)
@@ -1109,25 +1162,27 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_freq.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_freq.svg'), format='svg')
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_spec_all_ctrl_freq.pdf'), format='pdf')
     plt.close()
 
 
-    f_det = np.array(detuning_array) * 1e-9  # rad/s to GHz
-    f_theta = np.array(delta_theta) * 1e-9   # rad to GHz
-    p_cav = 1e3 * np.array(pcav_hist)  # W to mW
+    # f_det = np.array(detuning_array) * 1e-9  # rad/s to GHz
+    # f_theta = np.array(delta_theta) * 1e-9   # rad to GHz
+    # p_cav = 1e3 * np.array(pcav_hist)  # W to mW
 
-    fig = plt.figure(figsize=(14, 14))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(f_det, f_theta, p_cav, c=p_cav, cmap='jet', s=15)
-    ax.plot(f_det, f_theta, p_cav, color='blue', alpha=0.7)
-    ax.set_xlabel(r'$\Delta f_{pmp}$ (GHz)', fontsize=20)
-    ax.set_ylabel(r'$f_{\Theta}$ (GHz)', fontsize=20)
-    ax.set_zlabel(r'$P_{cav}$ (mW)', fontsize=20, labelpad=-0.7, rotation=90)
-    ax.tick_params(axis='both', labelsize=20)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.png'))
-    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.svg'), format='svg')
-    plt.close()
+    # fig = plt.figure(figsize=(14, 14))
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.scatter(f_det, f_theta, p_cav, c=p_cav, cmap='jet', s=15)
+    # ax.plot(f_det, f_theta, p_cav, color='blue', alpha=0.7)
+    # ax.set_xlabel(r'$\Delta f_{pmp}$ (GHz)', fontsize=20)
+    # ax.set_ylabel(r'$f_{\Theta}$ (GHz)', fontsize=20)
+    # ax.set_zlabel(r'$P_{cav}$ (mW)', fontsize=20, labelpad=-0.7, rotation=90)
+    # ax.tick_params(axis='both', labelsize=20)
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.png'))
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.svg'), format='svg')
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.pdf'), format='pdf')
+    # plt.close()
 
     print('All plots saved successfully in', save_dir)
 # %%
@@ -1284,7 +1339,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'new_delay_test')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'coloured_axis')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
