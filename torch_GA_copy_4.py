@@ -430,7 +430,7 @@ def initialize_del_omega_all(fine, dwell_steps, Nt, del_omega_init, del_omega_en
     del_omega_all[:, 0] = del_omega_init
 
     # Use fine as the action for quantization
-    delta_del_omega = rescale_and_quantize(fine, lower_limit=-5e6, upper_limit=5e6, step_size=1e4)
+    delta_del_omega = rescale_and_quantize(fine)
     delta_del_omega = torch.full((num_pumps,), delta_del_omega, dtype=torch.float64, device=device)
 
     min_del_omega = torch.minimum(del_omega_init, del_omega_end)
@@ -445,18 +445,10 @@ def initialize_del_omega_all(fine, dwell_steps, Nt, del_omega_init, del_omega_en
             del_omega_all[:, t] = del_omega_all[:, t-1]
 
     # Optionally, ensure last value is exactly del_omega_end
-    del_omega_all[:, -1] = del_omega_end
+    # del_omega_all[:, -1] = del_omega_end
+    del_omega_all = torch.clamp(del_omega_all, min=min_del_omega, max=max_del_omega)
     return del_omega_all
-# %%
-# del_omega_all = initialize_del_omega_all(
-#     fine=-0.2,    # Fine adjustment in [-1, 1]
-#     dwell_steps=10,  # Number of steps to dwell before applying delta
-#     Nt=Nt.item(),  # Total number of time steps
-#     del_omega_init=del_omega_init,
-#     del_omega_end=del_omega_end,
-#     rescale_and_quantize=rescale_and_quantize,
-#     device=device
-# )
+
 def reset_saved_data():
     saved_data = dict()
 
@@ -470,26 +462,6 @@ def reset_saved_data():
     saved_data['delta_theta'] = torch.zeros(num_probe, device=device)  # Initialize delta_theta
     return saved_data
 
-# %%
-# del_omega_all = initialize_del_omega_all(
-#     fine=-0.002,    # Fine adjustment in [-1, 1]
-#     dwell_steps=10,  # Number of steps to dwell before applying delta
-#     Nt=Nt.item(),  # Total number of time steps
-#     del_omega_init=del_omega_init,
-#     del_omega_end=del_omega_end,
-#     rescale_and_quantize=rescale_and_quantize,
-#     device=device
-#     )
-# u0 = DKS_init
-# # Reset saved_data for a new simulation run
-# saved_data = reset_saved_data()
-# # Run the main solver with the updated del_omega_all
-# saved_data = MainSolver(Nt, saved_data, u0, del_omega_all)
-# np_dict = tensor_to_dict(saved_data)
-# Acav = np.sqrt(np_dict['alpha']/2)* np_dict['u_probe']*np.exp(1j*np.pi)/np.sqrt(np_dict['u_probe'].shape[1])
-# Ecav = np.fft.fftshift(np.fft.fft(Acav, axis=1),axes=1)/np.sqrt(np_dict['u_probe'].shape[1])
-# spec_dBm = 10 * np.log10(np.abs(Ecav)**2) + 30
-# spec_dBm = np.clip(spec_dBm, -60, 10)  # Clip to avoid extreme values
 # %%
 def LLE(fine, dwell_steps, pump_power, start_factor, end_factor, progress_bar=False, ton='strong', save_dir=None, save_plots=False):
     """
@@ -507,7 +479,7 @@ def LLE(fine, dwell_steps, pump_power, start_factor, end_factor, progress_bar=Fa
         spec_dBm (np.ndarray): Spectrum in dBm.
         num_step (int): Number of steps taken to achieve soliton.
     """
-    pump_power = rescale_power(pump_power, lower_limit=0.05, upper_limit=0.2, step_size=0.001)
+    pump_power = rescale_power(pump_power)
     pump_power = torch.tensor(pump_power, dtype=torch.float64, device=device)
     del_omega_init = start_factor*un_norm_kappa
     del_omega_end = end_factor*un_norm_kappa
@@ -536,7 +508,7 @@ def LLE(fine, dwell_steps, pump_power, start_factor, end_factor, progress_bar=Fa
     saved_data, num_step = MainSolver(Nt, saved_data, u0, del_omega_all, Ain, t_sim, show_progress=progress_bar, ton=ton)
     np_dict = tensor_to_dict(saved_data)
     Acav = np.sqrt(np_dict['alpha']/2)* np_dict['u_probe']*np.exp(1j*np.pi)/np.sqrt(np_dict['u_probe'].shape[1])
-    Ecav = np.fft.fftshift(np.fft.fft(Acav, axis=1),axes=1)/np.sqrt(np_dict['u_probe'].shape[1])
+    # Ecav = np.fft.fftshift(np.fft.fft(Acav, axis=1),axes=1)/np.sqrt(np_dict['u_probe'].shape[1])
 
     wg = np_dict['driving_force'] * np.sqrt(1-np_dict['kappa_ext'])
     cav = np.sqrt(np_dict['kappa_ext'])*np_dict['u_probe']*np.exp(1j*np.pi)
@@ -613,24 +585,6 @@ def LLE(fine, dwell_steps, pump_power, start_factor, end_factor, progress_bar=Fa
             plt.savefig(os.path.join(save_dir, 'delta_theta_ton_kappa_' + ton + '.svg'), format='svg')
         plt.show()
         plt.close()
-
-        # plot detuning
-        # plt.figure(figsize=(10,6))
-        # x = np.linspace(0, Nt*tR.item()*1e6, len(np_dict['detuning']))
-        # plt.plot(x,np_dict['detuning']/(2*torch.pi), linewidth=1.5)
-        # plt.xlabel(r'Time $(\mu s)$', fontsize=20)
-        # plt.ylabel(r'$\Delta f_{pmp}$ (GHz)', fontsize=20)
-        # plt.xticks(fontsize=20)
-        # plt.yticks(fontsize=20)
-        # plt.gca().xaxis.set_major_formatter(formatter)
-        # plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
-        # # plt.savefig('./GA_results_corr_coeff/detuning_ton_' + ton + '.png')
-        # # plt.savefig('./GA_results_corr_coeff/detuning_ton_' + ton + '.svg', format='svg')
-        # if save_dir is not None:
-        #     plt.savefig(os.path.join(save_dir, 'detuning_ton_' + ton + '.png'))
-        #     plt.savefig(os.path.join(save_dir, 'detuning_ton_' + ton + '.svg'), format='svg')
-        # plt.show()
-        # plt.close()
 
         # plot pcav
         plt.figure(figsize=(10,6))
@@ -734,7 +688,7 @@ if __name__ == "__main__":
         progress_bar=True,
         algorithm_parameters=algorithm_param,
         random_seed=seed,
-        fitness_threshold=None,  # Set a fitness threshold for early stopping
+        fitness_threshold=1e-4,  # Set a fitness threshold for early stopping
     )
     save_dir = os.path.join(os.getcwd(), run_name)
     if not os.path.exists(save_dir):
@@ -752,6 +706,10 @@ if __name__ == "__main__":
     # -0.77720861  0.82866072
     fine = best_var[0]
     dwell_steps = 100  # Convert to integer for dwell steps
+    start_factor = best_var[2]
+    end_factor = best_var[3]
+    del_omega_init = start_factor*un_norm_kappa
+    del_omega_end = end_factor*un_norm_kappa
     domega = initialize_del_omega_all(fine, dwell_steps, Nt.item(), del_omega_init, del_omega_end, rescale_and_quantize, device).cpu().numpy()
     domega = domega[0]/(2*np.pi)  # Convert to GHz for plotting
     x = np.linspace(0, Nt*tR.item()*1e6, len(domega))
@@ -809,12 +767,12 @@ os.makedirs(save_dir, exist_ok=True)
 #     import re
 #     numbers = re.findall(r"[-+]?\d*\.\d+|\d+", line)
 #     best_var = np.array([float(num) for num in numbers])
-# [  0.04546566   0.7921826    3.27961039 -12.8131 ]
-fine = 0.04546566#best_var[0]
+best_var = [-0.25091976,  0.30380173, 10.11486226, -3.2260]
+fine = best_var[0]
 dwell_steps = 100
-pump_power = 0.7921826#best_var[1]  # Assuming the third parameter is the pump power
-start_factor = 3.27961039#best_var[2]
-end_factor = -12.8131#best_var[3]
+pump_power = best_var[1]  # Assuming the third parameter is the pump power
+start_factor = best_var[2]
+end_factor = best_var[3]
 del_omega_init = start_factor*un_norm_kappa
 del_omega_end = end_factor*un_norm_kappa
 domega = initialize_del_omega_all(fine, dwell_steps, Nt.item(), del_omega_init, del_omega_end, rescale_and_quantize, device).cpu().numpy()
@@ -843,7 +801,7 @@ desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
 desired_spectrum_dBm = 10*np.log10(np.abs(desired_spectrum)**2)+30
 desired_spectrum_dBm = np.clip(desired_spectrum_dBm, -60, None)  # Clip to avoid extreme values
 
-for ton_case in ['weak', 'moderate','strong']:#'weak', 'moderate', 
+for ton_case in ['strong']:#'weak', 'moderate', 
     print(f"Running simulation with ton='{ton_case}', fine={rescale_and_quantize(fine)/(2*np.pi*1e9)} GHz, dwell_steps={dwell_steps}, pump_power={rescale_power(pump_power)} W")
     spec, num_steps = LLE(fine, dwell_steps, pump_power, start_factor, end_factor, progress_bar=True, ton=ton_case, save_dir=save_dir)
     print(f"Number of steps taken to achieve soliton: {num_steps}")
