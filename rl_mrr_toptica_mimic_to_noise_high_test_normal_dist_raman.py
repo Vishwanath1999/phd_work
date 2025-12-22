@@ -207,7 +207,7 @@ class RL_MRR_Env():
         # For FFT-based circular convolution on a ring:
         # - multiply by dt_fast to approximate the continuous-time integral
         # - ifftshift to FFT ordering
-        h_R_fft = torch.fft.ifftshift(h_R * dt_fast).to(torch.complex128)
+        h_R_fft = (h_R * dt_fast).to(torch.complex128)
 
         # N-point FFT => circular convolution (recommended for ring resonators)
         self.H_R_FFT = torch.fft.fft(h_R_fft)  # complex128, length N_raman, on device
