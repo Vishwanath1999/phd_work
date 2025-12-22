@@ -165,7 +165,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(7e5)
+        self.max_steps = int(40e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -703,7 +703,7 @@ def calc_detuning_distance(env, scale=1):
 # %%
 # torch seed
 # torch.manual_seed(0)
-env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
+env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=500, thermal_effect='high',\
                   delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
 fpmp = env.sim_tensor['f_pmp'].item()
 freq = (fpmp + np.arange(-220,221)*env.FSR.item())*1e-12
@@ -750,7 +750,7 @@ agent.load_models()
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=500, thermal_effect='high',\
                   delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
     desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -788,7 +788,7 @@ def run_test_processes(run_id, save_dir):
     # select a random power between p_min and p_max for the environment
     # p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
     # p_pmp = np.round(p_pmp, 3)
-    state, acav, ecav, pcav = env.reset(10000, p_pmp=0.18)
+    state, acav, ecav, pcav = env.reset(50000, p_pmp=0.18)
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -871,7 +871,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.style.use('physrev.mplstyle')
     mod_pow = str(env.power[0]).replace('.','_')
     # Convert tuning steps to time in microseconds
-    time_axis = np.arange(len(pcav_hist)) * 100 * env.tR.item() * 1e6  # microseconds
+    time_axis = np.arange(len(pcav_hist)) * env.ctrl_freq * env.tR.item() * 1e6  # microseconds
 
     # 1. Pcav history
     plt.figure(figsize=(10, 6))
@@ -1056,15 +1056,15 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.yticks(yticks, ytick_labels, fontsize=20)
 
     # color the ytick labels from blue (top) to red (bottom)
-    ax = plt.gca()
-    norm = mcolors.Normalize(vmin=ymin, vmax=ymax)
-    cmap = cm.get_cmap('coolwarm')   # blue→red
+    # ax = plt.gca()
+    # norm = mcolors.Normalize(vmin=ymin, vmax=ymax)
+    # cmap = cm.get_cmap('coolwarm')   # blue→red
 
-    for ytick, label in zip(yticks, ax.get_yticklabels()):
-        # note: ymax (top) should be blue, ymin (bottom) red
-        # coolwarm maps low→blue, high→red, so use norm on (ymin+ymax - ytick)
-        val_for_color = ymin + ymax - ytick
-        label.set_color(cmap(norm(val_for_color)))
+    # for ytick, label in zip(yticks, ax.get_yticklabels()):
+    #     # note: ymax (top) should be blue, ymin (bottom) red
+    #     # coolwarm maps low→blue, high→red, so use norm on (ymin+ymax - ytick)
+    #     val_for_color = ymin + ymax - ytick
+    #     label.set_color(cmap(norm(val_for_color)))
 
     plt.title('Pump Detuning', fontsize=22, fontweight='bold')
     plt.tight_layout()
@@ -1339,7 +1339,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'coloured_axis')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_new')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch

@@ -430,7 +430,7 @@ def initialize_del_omega_all(fine, dwell_steps, Nt, del_omega_init, del_omega_en
     del_omega_all[:, 0] = del_omega_init
 
     # Use fine as the action for quantization
-    delta_del_omega = rescale_and_quantize(fine, lower_limit=-5e6, upper_limit=5e6, step_size=1e4)
+    delta_del_omega = rescale_and_quantize(fine)
     delta_del_omega = torch.full((num_pumps,), delta_del_omega, dtype=torch.float64, device=device)
 
     min_del_omega = torch.minimum(del_omega_init, del_omega_end)
