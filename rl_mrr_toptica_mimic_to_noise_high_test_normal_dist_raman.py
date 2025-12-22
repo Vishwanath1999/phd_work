@@ -166,7 +166,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(7e5)
+        self.max_steps = int(40e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -188,7 +188,7 @@ class RL_MRR_Env():
         self.delta_omega_step = delta_omega_step
         self.softness = softness
 
-        self.f_R = 0.027          # Raman fraction
+        self.f_R = 0.10          # Raman fraction
         self.tau1 = 15e-15        # s
         self.tau2 = 120e-15       # s
         self.N_raman = int(len(mu))
@@ -206,7 +206,6 @@ class RL_MRR_Env():
 
         # For FFT-based circular convolution on a ring:
         # - multiply by dt_fast to approximate the continuous-time integral
-        # - ifftshift to FFT ordering
         h_R_fft = (h_R * dt_fast).to(torch.complex128)
 
         # N-point FFT => circular convolution (recommended for ring resonators)
@@ -833,7 +832,7 @@ detuning_smooth_tensor = torch.tensor(detuning_smooth, device=DEVICE, dtype=torc
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
+    env = RL_MRR_Env(seq_len=500, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
                   delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
     desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -871,7 +870,7 @@ def run_test_processes(run_id, save_dir):
     # select a random power between p_min and p_max for the environment
     # p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
     # p_pmp = np.round(p_pmp, 3)
-    state, acav, ecav, pcav = env.reset(10000, p_pmp=0.18)
+    state, acav, ecav, pcav = env.reset(50000, p_pmp=0.18)
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -952,7 +951,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.style.use('physrev.mplstyle')
     mod_pow = str(env.power[0]).replace('.','_')
     # Convert tuning steps to time in microseconds
-    time_axis = np.arange(len(pcav_hist)) * 100 * env.tR.item() * 1e6  # microseconds
+    time_axis = np.arange(len(pcav_hist)) * env.ctrl_freq * env.tR.item() * 1e6  # microseconds
 
     # 1. Pcav history
     plt.figure(figsize=(10, 6))
