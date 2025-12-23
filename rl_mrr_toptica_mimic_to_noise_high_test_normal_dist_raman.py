@@ -166,7 +166,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(40e5)
+        self.max_steps = int(14e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -188,7 +188,7 @@ class RL_MRR_Env():
         self.delta_omega_step = delta_omega_step
         self.softness = softness
 
-        self.f_R = 0.10          # Raman fraction
+        self.f_R = 0.05          # Raman fraction
         self.tau1 = 15e-15        # s
         self.tau2 = 120e-15       # s
         self.N_raman = int(len(mu))
@@ -832,7 +832,7 @@ detuning_smooth_tensor = torch.tensor(detuning_smooth, device=DEVICE, dtype=torc
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=500, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
                   delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
     desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -870,7 +870,7 @@ def run_test_processes(run_id, save_dir):
     # select a random power between p_min and p_max for the environment
     # p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
     # p_pmp = np.round(p_pmp, 3)
-    state, acav, ecav, pcav = env.reset(50000, p_pmp=0.18)
+    state, acav, ecav, pcav = env.reset(10000, p_pmp=0.18)
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -1230,6 +1230,58 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.svg'), format='svg')
     plt.close()
 
+    mu = env.mu.cpu().numpy().squeeze()          # (n_modes,)
+    A = np.asarray(spectrum_dBm).T               # (n_times, n_modes)
+
+    t_max = 0.25  # µs window for "regimes"
+    # Example slices: cw, primary sideband, MI, soliton (edit as needed)
+    t_plot = np.array([0.02, 0.06, 0.11, 0.18, 0.24])  # µs
+    t = np.asarray(time_axis).squeeze()
+    win = t <= t_max
+    if np.any(win):
+        t_win = t[win]
+        base_idx = np.flatnonzero(win)
+
+        # Snap requested times to nearest saved spectrum indices (within window)
+        idx_win = np.array([int(np.argmin(np.abs(t_win - tt))) for tt in t_plot], dtype=int)
+        idx_win = np.unique(idx_win)
+        idx_sel = base_idx[idx_win]  # indices into original A/t
+
+        # 3D waterfall plot
+        fig = plt.figure(figsize=(12, 5))
+        ax = fig.add_subplot(111, projection="3d")
+        for i in idx_sel:
+            ax.plot(mu, np.full_like(mu, t[i], dtype=float), A[i], lw=1.6)
+
+        ax.set_xlabel("Mode number", fontsize=14)
+        ax.set_ylabel(r"Time ($\mu$s)", fontsize=14)
+        ax.set_zlabel("Power (dBm)", fontsize=14)
+        # ax.set_title(rf"Selected spectra from spectrum_dBm (0–{t_max} $\mu$s)", fontsize=14)
+
+        ax.set_zlim(-60, float(np.nanmax(A[idx_sel])) + 2.0)
+        ax.view_init(elev=22, azim=-60)
+        ax.grid(True)
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_slices_3d_0to{t_max}_us.png'), dpi=200)
+        plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_slices_3d_0to{t_max}_us.svg'), format='svg')
+        plt.close(fig)
+
+        # Optional: 2D overlay of those same slices
+        # plt.figure(figsize=(12, 4))
+        # for i in idx_sel:
+        #     plt.plot(mu, A[i], lw=1.4, label=f"{t[i]:.3f} µs")
+        # plt.xlabel("Mode number", fontsize=14)
+        # plt.ylabel("Power (dBm)", fontsize=14)
+        # plt.title(rf"Selected spectra (spectrum_dBm) (0–{t_max} $\mu$s)", fontsize=14)
+        # plt.grid(True)
+        # plt.legend(fontsize=10, ncol=3)
+        # plt.tight_layout()
+        # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_slices_2d_0to{t_max}_us.png'), dpi=200)
+        # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_slices_2d_0to{t_max}_us.svg'), format='svg')
+        # plt.close()
+
+
+
     print('All plots saved successfully in', save_dir)
 # %%
 def plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir):
@@ -1386,7 +1438,7 @@ import warnings
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'raman_response')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'spectral_slice_raman')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
