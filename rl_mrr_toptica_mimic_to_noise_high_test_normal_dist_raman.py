@@ -1003,9 +1003,9 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     # 3. Spectrum evolution (FFT of acav_hist)
     plt.figure(figsize=(14,4))
     spectrum = np.fft.fftshift(np.fft.fft(np.array(acav_hist).T, axis=0), axes=0)
-    spectrum_dBm = 10*np.log10(np.abs(spectrum)**2)+30
-    spectrum_dBm = np.clip(spectrum_dBm, -60, 10)
-    plt.imshow(spectrum_dBm, aspect='auto', cmap='jet',
+    spectrum_dBm = 10*np.log10(np.abs(spectrum)**2 + 1e-30)+30
+    spectrum_dBm_plot = np.clip(spectrum_dBm, -60, None)
+    plt.imshow(spectrum_dBm_plot, aspect='auto', cmap='jet',
                extent=[time_axis[0], time_axis[-1], env.mu.min().item(), env.mu.max().item()])
     plt.xlabel(r'Time ($\mu$s)', fontsize=20)
     # plt.ylabel(r'$\mu$' +'(rel)', fontsize=20)
@@ -1019,6 +1019,47 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ecav_hist_ifft_spec_all_ctrl.svg'), format='svg')
     plt.close()
+
+    # 3b. 3D waterfall of selected spectrum slices (solid black, no dashed/projection)
+    # spectrum_dBm is (n_modes, n_times) (same orientation as imshow above)
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    t = np.asarray(time_axis).squeeze()            # (n_times,)
+    mu = env.mu.cpu().numpy().squeeze()            # (n_modes,)
+    A = np.asarray(spectrum_dBm).T                 # (n_times, n_modes)
+
+    t_max = 0.15  # microseconds
+    # Example slices across regimes (edit if you want different points)
+    t_plot = np.array([0.01, 0.06, 0.09, 0.12, 0.15])  # microseconds
+
+    win = t <= t_max
+    if np.any(win):
+        t_win = t[win]
+        base_idx = np.flatnonzero(win)
+
+        idx_win = np.array([int(np.argmin(np.abs(t_win - tt))) for tt in t_plot], dtype=int)
+        idx_win = np.unique(idx_win)
+        idx_sel = base_idx[idx_win]
+
+        fig = plt.figure(figsize=(12, 5))
+        ax = fig.add_subplot(111, projection='3d')
+
+        for i in idx_sel:
+            ax.plot(mu, np.full_like(mu, t[i], dtype=float), A[i], color='r', lw=1, linestyle='-')
+
+        ax.set_xlabel('Mode number', fontsize=14)
+        ax.set_ylabel(r'Time ($\mu$s)', fontsize=14)
+        ax.set_zlabel('Power (dBm)', fontsize=14)
+        # ax.set_title(rf'3D waterfall: spectrum slices (0–{t_max} $\\mu$s)', fontsize=14)
+
+        # Set only a floor so peaks are not clipped; top auto-scales with data
+        # ax.set_zlim(-60, float(np.nanmax(A[idx_sel])) + 2.0)
+        ax.view_init(elev=22, azim=-60)
+        ax.grid(True)
+        plt.tight_layout()
+
+        plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_waterfall_3d_0to{t_max}_us.png'), dpi=200, bbox_inches='tight', pad_inches=0.25)
+        plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_waterfall_3d_0to{t_max}_us.svg'), format='svg', bbox_inches='tight', pad_inches=0.25)
+        plt.close(fig)
 
     plt.figure(figsize=(14,4))
     spectral_phase = np.angle(spectrum, deg=False)
@@ -1057,6 +1098,24 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.png'))
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_ewg_hist_spec_all_ctrl.svg'), format='svg')
+    plt.close()
+
+    # 4b . Find raman shifts over time
+    peak_indices = np.argmax(ewg_dBm, axis=0)
+    spec_copy = ewg_dBm.copy()
+    spec_copy[peak_indices] = -100 # artificially suppress main peak to find second peak
+    second_peak_indices = np.argmax(spec_copy, axis=0)
+    raman_shifts = freq[second_peak_indices] - freq[peak_indices]
+    plt.figure(figsize=(10, 6))
+    plt.plot(time_axis, raman_shifts*1e-9, linewidth=1.5)
+    plt.xlabel(r'Time ($\mu$s)', fontsize=20)
+    plt.ylabel('Raman Shift (GHz)', fontsize=20)
+    plt.grid()
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_raman_shift_spec_all_ctrl.png'))
+    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_raman_shift_spec_all_ctrl.svg'), format='svg')
     plt.close()
 
     # 5. Reward plot
@@ -1235,7 +1294,9 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
 
     t_max = 0.25  # µs window for "regimes"
     # Example slices: cw, primary sideband, MI, soliton (edit as needed)
-    t_plot = np.array([0.02, 0.06, 0.11, 0.18, 0.24])  # µs
+    # Select times to plot based on number of samples
+    n_samples = 7  # Change this to select different number of samples
+    t_plot = np.linspace(0.02, t_max-0.01, n_samples)  # µs, evenly spaced from 0.02 to near t_max
     t = np.asarray(time_axis).squeeze()
     win = t <= t_max
     if np.any(win):
@@ -1258,7 +1319,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
         ax.set_zlabel("Power (dBm)", fontsize=14)
         # ax.set_title(rf"Selected spectra from spectrum_dBm (0–{t_max} $\mu$s)", fontsize=14)
 
-        ax.set_zlim(-60, float(np.nanmax(A[idx_sel])) + 2.0)
+        ax.set_zlim(-60, 25)
         ax.view_init(elev=22, azim=-60)
         ax.grid(True)
         plt.tight_layout()
