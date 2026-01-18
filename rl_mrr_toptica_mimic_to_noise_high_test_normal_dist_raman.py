@@ -188,7 +188,7 @@ class RL_MRR_Env():
         self.delta_omega_step = delta_omega_step
         self.softness = softness
 
-        self.f_R = 0.05          # Raman fraction
+        self.f_R = 0.07          # Raman fraction
         self.tau1 = 15e-15        # s
         self.tau2 = 120e-15       # s
         self.N_raman = int(len(mu))
@@ -1025,7 +1025,10 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
     t = np.asarray(time_axis).squeeze()            # (n_times,)
     mu = env.mu.cpu().numpy().squeeze()            # (n_modes,)
-    A = np.asarray(spectrum_dBm).T                 # (n_times, n_modes)
+    e_wg_hist = np.array(e_wg_hist).T
+    ewg_dBm = 10*np.log10(np.abs(e_wg_hist)**2)+30
+    ewg_dBm = np.clip(ewg_dBm, -60, 50)
+    A = ewg_dBm               # (n_times, n_modes)
 
     t_max = 0.15  # microseconds
     # Example slices across regimes (edit if you want different points)
@@ -1101,22 +1104,22 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.close()
 
     # 4b . Find raman shifts over time
-    peak_indices = np.argmax(ewg_dBm, axis=0)
-    spec_copy = ewg_dBm.copy()
-    spec_copy[peak_indices] = -100 # artificially suppress main peak to find second peak
-    second_peak_indices = np.argmax(spec_copy, axis=0)
-    raman_shifts = freq[second_peak_indices] - freq[peak_indices]
-    plt.figure(figsize=(10, 6))
-    plt.plot(time_axis, raman_shifts*1e-9, linewidth=1.5)
-    plt.xlabel(r'Time ($\mu$s)', fontsize=20)
-    plt.ylabel('Raman Shift (GHz)', fontsize=20)
-    plt.grid()
-    plt.xticks(fontsize=20)
-    plt.yticks(fontsize=20)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_raman_shift_spec_all_ctrl.png'))
-    plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_raman_shift_spec_all_ctrl.svg'), format='svg')
-    plt.close()
+    # peak_indices = np.argmax(ewg_dBm, axis=0)
+    # spec_copy = ewg_dBm.copy()
+    # spec_copy[peak_indices] = -100 # artificially suppress main peak to find second peak
+    # second_peak_indices = np.argmax(spec_copy, axis=0)
+    # raman_shifts = freq[second_peak_indices] - freq[peak_indices]
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(time_axis, raman_shifts*1e-9, linewidth=1.5)
+    # plt.xlabel(r'Time ($\mu$s)', fontsize=20)
+    # plt.ylabel('Raman Shift (GHz)', fontsize=20)
+    # plt.grid()
+    # plt.xticks(fontsize=20)
+    # plt.yticks(fontsize=20)
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_raman_shift_spec_all_ctrl.png'))
+    # plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_raman_shift_spec_all_ctrl.svg'), format='svg')
+    # plt.close()
 
     # 5. Reward plot
     plt.figure(figsize=(10, 6))
@@ -1257,7 +1260,7 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.vlines(freq, -60*np.ones(len(ecav[-1])), obtained_spectrum,
                label='Obtained Spectrum',alpha=1, linewidth=1.5)
     plt.vlines(freq, -60*np.ones(len(desired_spectrum_dBm)),
-               desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.5, linewidth=1.5)
+               desired_spectrum_dBm, color='red', label='Desired Spectrum',alpha=0.25, linewidth=1.5)
     plt.xlabel('Freq. (THz)', fontsize=20)
     plt.ylabel('Power(dBm)', fontsize=20)
     plt.grid()
@@ -1289,43 +1292,43 @@ def plot_all_results(env, save_dir, idx, pcav_hist, acav_hist, e_wg_hist, r_hist
     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_3d_detuning_delta_theta_pcav.svg'), format='svg')
     plt.close()
 
-    mu = env.mu.cpu().numpy().squeeze()          # (n_modes,)
-    A = np.asarray(spectrum_dBm).T               # (n_times, n_modes)
+    # mu = env.mu.cpu().numpy().squeeze()          # (n_modes,)
+    # A = np.asarray(spectrum_dBm).T               # (n_times, n_modes)
 
-    t_max = 0.25  # µs window for "regimes"
-    # Example slices: cw, primary sideband, MI, soliton (edit as needed)
-    # Select times to plot based on number of samples
-    n_samples = 7  # Change this to select different number of samples
-    t_plot = np.linspace(0.02, t_max-0.01, n_samples)  # µs, evenly spaced from 0.02 to near t_max
-    t = np.asarray(time_axis).squeeze()
-    win = t <= t_max
-    if np.any(win):
-        t_win = t[win]
-        base_idx = np.flatnonzero(win)
+    # t_max = 0.25  # µs window for "regimes"
+    # # Example slices: cw, primary sideband, MI, soliton (edit as needed)
+    # # Select times to plot based on number of samples
+    # n_samples = 7  # Change this to select different number of samples
+    # t_plot = np.linspace(0.02, t_max-0.01, n_samples)  # µs, evenly spaced from 0.02 to near t_max
+    # t = np.asarray(time_axis).squeeze()
+    # win = t <= t_max
+    # if np.any(win):
+    #     t_win = t[win]
+    #     base_idx = np.flatnonzero(win)
 
-        # Snap requested times to nearest saved spectrum indices (within window)
-        idx_win = np.array([int(np.argmin(np.abs(t_win - tt))) for tt in t_plot], dtype=int)
-        idx_win = np.unique(idx_win)
-        idx_sel = base_idx[idx_win]  # indices into original A/t
+    #     # Snap requested times to nearest saved spectrum indices (within window)
+    #     idx_win = np.array([int(np.argmin(np.abs(t_win - tt))) for tt in t_plot], dtype=int)
+    #     idx_win = np.unique(idx_win)
+    #     idx_sel = base_idx[idx_win]  # indices into original A/t
 
-        # 3D waterfall plot
-        fig = plt.figure(figsize=(12, 5))
-        ax = fig.add_subplot(111, projection="3d")
-        for i in idx_sel:
-            ax.plot(mu, np.full_like(mu, t[i], dtype=float), A[i], lw=1.6)
+    #     # 3D waterfall plot
+    #     fig = plt.figure(figsize=(12, 5))
+    #     ax = fig.add_subplot(111, projection="3d")
+    #     for i in idx_sel:
+    #         ax.plot(mu, np.full_like(mu, t[i], dtype=float), A[i], lw=1.6)
 
-        ax.set_xlabel("Mode number", fontsize=14)
-        ax.set_ylabel(r"Time ($\mu$s)", fontsize=14)
-        ax.set_zlabel("Power (dBm)", fontsize=14)
-        # ax.set_title(rf"Selected spectra from spectrum_dBm (0–{t_max} $\mu$s)", fontsize=14)
+    #     ax.set_xlabel("Mode number", fontsize=14)
+    #     ax.set_ylabel(r"Time ($\mu$s)", fontsize=14)
+    #     ax.set_zlabel("Power (dBm)", fontsize=14)
+    #     # ax.set_title(rf"Selected spectra from spectrum_dBm (0–{t_max} $\mu$s)", fontsize=14)
 
-        ax.set_zlim(-60, 25)
-        ax.view_init(elev=22, azim=-60)
-        ax.grid(True)
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_slices_3d_0to{t_max}_us.png'), dpi=200)
-        plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_slices_3d_0to{t_max}_us.svg'), format='svg')
-        plt.close(fig)
+    #     ax.set_zlim(-60, 25)
+    #     ax.view_init(elev=22, azim=-60)
+    #     ax.grid(True)
+    #     plt.tight_layout()
+    #     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_slices_3d_0to{t_max}_us.png'), dpi=200)
+    #     plt.savefig(os.path.join(save_dir, mod_pow + f'_{thermal_effect}_run_{idx}_spectrum_dBm_slices_3d_0to{t_max}_us.svg'), format='svg')
+    #     plt.close(fig)
 
         # Optional: 2D overlay of those same slices
         # plt.figure(figsize=(12, 4))
@@ -1499,7 +1502,7 @@ import warnings
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'spectral_slice_raman')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'spectral_slice_raman_raman_conference')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch

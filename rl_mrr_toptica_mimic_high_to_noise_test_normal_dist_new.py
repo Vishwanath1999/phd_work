@@ -746,7 +746,7 @@ def run_test_processes(run_id, save_dir):
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuningv7',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuningv8',
     'batch_size': 256,
     'dist': 'normal', # 'beta' or 'normal'
     'train':False,

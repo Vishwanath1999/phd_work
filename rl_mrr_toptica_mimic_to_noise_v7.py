@@ -299,7 +299,7 @@ class RL_MRR_Env():
         err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
         raise RuntimeError(f"Convergence Error: {err}")
     
-    def reset(self, steps=None):
+    def reset(self, steps=None, p_pmp=None):
         print('Detuning range:', self.del_omega_init.item()/(2*np.pi*1e9), ' to ', self.del_omega_end.item()/(2*np.pi*1e9), ' GHz')
         self.state = self.DKS_init
         self.current_del_omega = self.del_omega_0
@@ -309,7 +309,7 @@ class RL_MRR_Env():
         self.t_sim_step = 0
 
         # self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
-        self.power = np.array([0.18])
+        self.power = np.array([0.18]) if p_pmp is None else np.array([p_pmp])
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
 
         for ii in range(len(Ppmp)):
@@ -612,7 +612,7 @@ class RL_MRR_Env():
             self.Ein[ii,int(self.mu0+self.ind_pmp[ii])] = torch.sqrt(Ppmp[ii])*len(self.mu)
             self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*self.phi_pmp[ii])
         
-        delta_omega = (2*torch.pi)*self.rescale_and_quantize(action[1:], self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)  # Convert GHz to rad/s
+        delta_omega = (2*torch.pi)*self.rescale_and_quantize(action, self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)  # Convert GHz to rad/s
         
         for _ in range(self.ctrl_freq):
             del_omega = self.current_del_omega + delta_omega 
@@ -718,7 +718,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuningv7',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuning_v8',
     'batch_size': 256,
     'dist': 'normal', # 'beta' or 'normal'
     'train':True,
@@ -770,7 +770,7 @@ if config['train']:
         score = 0
         done = False
         n_steps = 0
-        state, acav, ecav, pcav = env.reset(10000)
+        state, acav, ecav, pcav = env.reset(10000, p_pmp=0.16)
         logs['pump power'] = env.power
         log_pcav = 10*np.log10(pcav + 1e-12) + 30
         bounds = calc_detuning_distance(env, scale=3)

@@ -1222,7 +1222,7 @@ def plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir):
     mu_norm_freq = np.nanmean(norm_freq_pad, axis=0)
     sd_norm_freq = np.nanstd(norm_freq_pad, axis=0)
 
-    x = 100*env.tR.item()*np.arange(max_len)*1e6
+    x = env.ctrl_freq*env.tR.item()*np.arange(max_len)*1e6
 
     fig, ax1 = plt.subplots(figsize=(10, 6))
     ln1, = ax1.plot(x, mu_pcav, color=pcav_color, linewidth=1.8, label='P_cav mean')
@@ -1339,7 +1339,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_new')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_new_pw_conference')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
