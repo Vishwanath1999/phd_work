@@ -165,7 +165,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(1e6)
+        self.max_steps = int(7e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -1317,9 +1317,11 @@ def plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir):
         reward_pad[i, :len(arr)] = arr
     mu_reward = np.nanmean(reward_pad, axis=0)
     sd_reward = np.nanstd(reward_pad, axis=0)
+    # find global max of reward
+    max_reward = np.nanmax(reward_pad)
     fig, ax1 = plt.subplots(figsize=(10, 6))
     ln1, = ax1.plot(x, mu_reward, color='green', linewidth=1.8, label='Reward mean')
-    ax1.fill_between(x, mu_reward - sd_reward, mu_reward + sd_reward, color='green', alpha=0.25, label='Reward ±1σ')
+    ax1.fill_between(x, mu_reward - sd_reward, np.clip(mu_reward + sd_reward, a_min=None, a_max=max_reward), color='green', alpha=0.25, label='Reward ±1σ')
     ax1.set_xlabel(r'Time ($\mu s$)', fontsize=20)
     ax1.set_ylabel(r'Reward', fontsize=20)
     ax1.tick_params(axis='y', labelcolor='green')
