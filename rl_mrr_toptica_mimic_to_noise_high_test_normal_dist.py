@@ -1311,16 +1311,18 @@ def plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir):
     # plot the mean and avg of reward histories w.r.t time
     reward_arrs = [np.load(f) for f in reward_files]
     reward_pad = np.full((len(reward_arrs), max_len), np.nan)
+    # find the global max of reward_pad
+    max_reward = np.max([np.max(arr) for arr in reward_arrs])
     for i, arr in enumerate(reward_arrs):
         reward_pad[i, :len(arr)] = arr
     mu_reward = np.nanmean(reward_pad, axis=0)
     sd_reward = np.nanstd(reward_pad, axis=0)
     fig, ax1 = plt.subplots(figsize=(10, 6))
     ln1, = ax1.plot(x, mu_reward, color='green', linewidth=1.8, label='Reward mean')
-    ax1.fill_between(x, mu_reward - sd_reward, mu_reward + sd_reward, color='green', alpha=0.25, label='Reward ±1σ')
-    ax1.set_xlabel(r'Time ($\mu s$)', fontsize=20)
-    ax1.set_ylabel(r'Reward', fontsize=20)
-    ax1.tick_params(axis='y', labelcolor='green')
+    ax1.fill_between(x, mu_reward - sd_reward, np.clip(mu_reward + sd_reward,a_max=max_reward, a_min=None), color='green', alpha=0.25, label='Reward ±1σ')
+    ax1.set_xlabel(r'Time ($\mu s$)', fontsize=20, fontweight='bold')
+    ax1.set_ylabel(r'Reward', fontsize=20, fontweight='bold')
+    # ax1.tick_params(axis='y', labelcolor='green')
     ax1.grid(True, alpha=0.4)
     fig.tight_layout()
     ax1.tick_params(axis='x', labelsize=20)
@@ -1360,4 +1362,18 @@ if __name__ == '__main__':
     freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
     reward_files = sorted(glob.glob(os.path.join(save_dir, '*_reward_history.npy')))
     plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir)
+# %%
+import os
+import glob
+import numpy as np
+
+save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_new_pw_conference')
+npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
+# # # Example usage: plot all reward histories with a rolling window of 100
+# plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
+# plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
+pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
+freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
+reward_files = sorted(glob.glob(os.path.join(save_dir, '*_reward_history.npy')))
+plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir)
 # %%
