@@ -165,7 +165,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(7e5)
+        self.max_steps = int(4e6)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -718,7 +718,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuningv8',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuning_v8',
     'batch_size': 256,
     'dist': 'normal', # 'beta' or 'normal'
     'train':False,
@@ -761,7 +761,7 @@ def run_test_processes(run_id, save_dir):
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuningv8',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuning_v8',
     'batch_size': 256,
     'dist': 'normal', # 'beta' or 'normal'
     'train':False,
@@ -1343,7 +1343,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect)
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_runs')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch

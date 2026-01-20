@@ -750,7 +750,7 @@ agent.load_models()
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=500, thermal_effect='high',\
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=700, thermal_effect='high',\
                   delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
     desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -788,7 +788,7 @@ def run_test_processes(run_id, save_dir):
     # select a random power between p_min and p_max for the environment
     # p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
     # p_pmp = np.round(p_pmp, 3)
-    state, acav, ecav, pcav = env.reset(50000, p_pmp=0.18)
+    state, acav, ecav, pcav = env.reset(70000, p_pmp=0.18)
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -1341,7 +1341,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_new_pw_conference')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_new_pw_conference_v2')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
@@ -1363,17 +1363,17 @@ if __name__ == '__main__':
     reward_files = sorted(glob.glob(os.path.join(save_dir, '*_reward_history.npy')))
     plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir)
 # %%
-import os
-import glob
-import numpy as np
+# import os
+# import glob
+# import numpy as np
 
-save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_new_pw_conference')
-npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
-# # # Example usage: plot all reward histories with a rolling window of 100
-# plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
-# plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
-pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
-freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
-reward_files = sorted(glob.glob(os.path.join(save_dir, '*_reward_history.npy')))
-plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir)
+# save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_new_pw_conference_v2')
+# npy_files = glob.glob(os.path.join(save_dir, '*.npy'))
+# # # # Example usage: plot all reward histories with a rolling window of 100
+# # plot_reward_histories_sigma(npy_files, N=5, S=0, label='Reward', color='C0')
+# # plot_reward_histories_min_max(npy_files, N=5, S=0, label='Reward', color='C0')
+# pcav_files = sorted(glob.glob(os.path.join(save_dir, '*_p_cav.npy')))
+# freq_files = sorted(glob.glob(os.path.join(save_dir, '*_detuning_theta_sum.npy')))
+# reward_files = sorted(glob.glob(os.path.join(save_dir, '*_reward_history.npy')))
+# plot_pcav_freq_mean_std(pcav_files, freq_files, reward_files, save_dir)
 # %%
