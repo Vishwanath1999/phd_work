@@ -165,7 +165,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(4e6)
+        self.max_steps = int(7e5)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -187,7 +187,61 @@ class RL_MRR_Env():
         self.delta_omega_step = delta_omega_step
         self.softness = softness
 
+        self.f_R = 0.0         # Raman fraction
+        self.tau1 = 15e-15        # s
+        self.tau2 = 120e-15       # s
+        self.N_raman = int(len(mu))
+        # tR is your roundtrip time; make it a scalar tensor
+        tR_scalar = tR if tR.ndim == 0 else tR[0]
+        dt_fast = (tR_scalar.to(torch.float64) / float(self.N_raman))  # seconds/sample
+        t_fast = torch.arange(self.N_raman, device=DEVICE, dtype=torch.float64) * dt_fast
+        # h_R(t) = [(τ1²+τ2²)/(τ1·τ2²)] exp(-t/τ2) sin(t/τ1), causal (t>=0)
+        factor = (self.tau1**2 + self.tau2**2) / (self.tau1 * self.tau2**2)
+        h_R = factor * torch.exp(-t_fast / self.tau2) * torch.sin(t_fast / self.tau1)
+
+        # Normalize so integral h_R(t) dt = 1  (discrete: sum(h_R)*dt_fast)
+        integral = torch.sum(h_R) * dt_fast
+        h_R = torch.where(integral > 0, h_R / integral, h_R)
+
+        # For FFT-based circular convolution on a ring:
+        # - multiply by dt_fast to approximate the continuous-time integral
+        h_R_fft = (h_R * dt_fast).to(torch.complex128)
+
+        # N-point FFT => circular convolution (recommended for ring resonators)
+        self.H_R_FFT = torch.fft.fft(h_R_fft)
+        
     
+    @staticmethod
+    @torch.jit.script
+    def raman_response(A: torch.Tensor, H_R_FFT: torch.Tensor) -> torch.Tensor:
+        """
+        Raman convolution on a periodic grid (circular):
+        R(t) = ∫ h_R(τ) |A(t-τ)|^2 dτ
+        Returns R(t) (real-valued).
+        """
+        power = torch.abs(A) ** 2                       # real
+        return torch.fft.ifft(torch.fft.fft(power) * H_R_FFT).real
+
+    @staticmethod
+    @torch.jit.script
+    def NL_with_Raman(
+        uu: torch.Tensor,
+        raman_response_: torch.Tensor,
+        gamma: torch.Tensor,
+        L: torch.Tensor,
+        f_R: float,
+    ) -> torch.Tensor:
+        """
+        Nonlinear operator:
+        -i*gamma*L * [ (1-f_R)|u|^2 + f_R*(h_R ⊛ |u|^2) ]
+        """
+        kerr = torch.abs(uu) ** 2
+        if f_R > 0.0:
+            total = (1.0 - f_R) * kerr + f_R * raman_response_
+        else:
+            total = kerr
+        return -1j * (gamma * L * total)
+
     @staticmethod
     @torch.jit.script
     def Noise(h_bar: float, omega1: torch.Tensor, mu_len: int, device: torch.device) -> torch.Tensor:
@@ -274,22 +328,47 @@ class RL_MRR_Env():
     
     # @staticmethod
     # @torch.jit.script
+    # def ssfm_step(self,A0: torch.Tensor, it: int, alpha: torch.Tensor, Dint_shift: torch.Tensor,
+    #             del_omega_all: torch.Tensor, tR: torch.Tensor, gamma: torch.Tensor, L: torch.Tensor, 
+    #             max_iter: int, tol: float, dt: int, kext: torch.Tensor, Fdrive_val:torch.Tensor,
+    #             ) -> torch.Tensor:
+        
+    #     A0 = A0 + Fdrive_val * torch.sqrt(kext) * dt
+    #     L_h_prop = torch.exp(self.FFT_Lin(it, alpha, Dint_shift, del_omega_all, tR) * dt / 2)
+    #     A_L_h_prop = torch.fft.ifft(torch.fft.fft(A0) * L_h_prop)
+    #     NL_h_prop_0 = self.NL(A0, gamma, L)
+    #     A_h_prop = A0#.clone()
+    #     A_prop = 0*A0.clone()
+    #     # torch.zeros_like(A0, dtype=torch.complex128, device=A0.device)
+
+    #     for _ in range(max_iter):
+    #         err=0
+    #         NL_h_prop_1 = self.NL(A_h_prop, gamma, L)
+    #         NL_prop = (NL_h_prop_0 + NL_h_prop_1) * dt / 2
+    #         A_prop = torch.fft.ifft(torch.fft.fft(A_L_h_prop * torch.exp(NL_prop)) * L_h_prop)
+    #         err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
+    #         if err < tol:
+    #             return A_prop
+    #         A_h_prop = A_prop
+    #     err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
+    #     raise RuntimeError(f"Convergence Error: {err}")
+
     def ssfm_step(self,A0: torch.Tensor, it: int, alpha: torch.Tensor, Dint_shift: torch.Tensor,
                 del_omega_all: torch.Tensor, tR: torch.Tensor, gamma: torch.Tensor, L: torch.Tensor, 
-                max_iter: int, tol: float, dt: int, kext: torch.Tensor, Fdrive_val:torch.Tensor,
+                max_iter: int, tol: float, dt: int, kext: torch.Tensor, Fdrive_val:torch.Tensor, HR_FFT:torch.Tensor,fR:float
                 ) -> torch.Tensor:
         
         A0 = A0 + Fdrive_val * torch.sqrt(kext) * dt
         L_h_prop = torch.exp(self.FFT_Lin(it, alpha, Dint_shift, del_omega_all, tR) * dt / 2)
         A_L_h_prop = torch.fft.ifft(torch.fft.fft(A0) * L_h_prop)
-        NL_h_prop_0 = self.NL(A0, gamma, L)
+        NL_h_prop_0 = self.NL_with_Raman(A0, self.raman_response(A0, HR_FFT), gamma, L, fR)
         A_h_prop = A0#.clone()
         A_prop = 0*A0.clone()
         # torch.zeros_like(A0, dtype=torch.complex128, device=A0.device)
 
         for _ in range(max_iter):
             err=0
-            NL_h_prop_1 = self.NL(A_h_prop, gamma, L)
+            NL_h_prop_1 = self.NL_with_Raman(A_h_prop, self.raman_response(A_h_prop, HR_FFT), gamma, L, fR)
             NL_prop = (NL_h_prop_0 + NL_h_prop_1) * dt / 2
             A_prop = torch.fft.ifft(torch.fft.fft(A_L_h_prop * torch.exp(NL_prop)) * L_h_prop)
             err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
@@ -330,7 +409,7 @@ class RL_MRR_Env():
 
             Fdrive_val = self.Fdrive(del_omega + (self.delta_theta/self.tR), self.t_sim_step, self.Ain)
             u0 = self.ssfm_step(self.state, self.step_cntr, self.alpha, self.Dint_shift, del_omega + (self.delta_theta/self.tR), self.tR, self.gamma, \
-                                self.L, 10, 1e-3, 1, self.kext, Fdrive_val)
+                                self.L, 10, 1e-3, 1, self.kext, Fdrive_val, self.H_R_FFT, self.f_R)
             self.step_cntr += 1
             self.state = u0
             P_avg = torch.mean(torch.abs(u0)**2)  # Compute average power
@@ -625,7 +704,7 @@ class RL_MRR_Env():
 
             Fdrive_val = self.Fdrive(self.current_del_omega + self.delta_theta/(self.tR), self.t_sim_step, self.Ain)
             u0 = self.ssfm_step(state, self.step_cntr, self.alpha, self.Dint_shift, self.current_del_omega + self.delta_theta/(self.tR), self.tR, self.gamma, \
-                                self.L, 10, 1e-3, 1, self.kext, Fdrive_val)
+                                self.L, 10, 1e-3, 1, self.kext, Fdrive_val, self.H_R_FFT, self.f_R)
             state = u0
             P_avg = torch.mean(torch.abs(u0)**2)  # Compute average power
             d_delta_theta_dt = -self.delta_theta / self.tau0 + self.xi * P_avg
@@ -842,6 +921,9 @@ def run_test_processes(run_id, save_dir):
         np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_reward_history.npy'), np.array(r_hist))
         # save detuning history
         np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_detuning_history.npy'), np.array(det_hist)*1e-9)
+        # save ecav history and ewg history
+        np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_acav_history.npy'), np.array(acav_hist))
+        np.save(os.path.join(save_dir, str(run_id) + mod_pow + '_'+'_ewg_history.npy'), np.array(e_wg_hist))
         # Prepare spectra for plotting
         freq = (env.sim_tensor['f_pmp'].item() + np.arange(-220,221)*env.FSR.item())*1e-12
         obtained_spectrum = 10*np.log10(np.abs(e_wg_hist[-1])**2) + 30 if len(e_wg_hist) > 0 else np.zeros(441)
@@ -1343,7 +1425,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'long_runs')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'normal')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
