@@ -663,7 +663,22 @@ class RL_MRR_Env():
         
         return maintenance_bonus
     
-    def _set_measurement_params(self,
+    def _set_measurement_params(self):
+        # OSA / measurement model params
+        self.osa_rbw_fwhm_bins = 2.0          # tune this (0 disables smoothing)
+        self._osa_rbw_kernel = self._gaussian_kernel1d(self.osa_rbw_fwhm_bins)
+
+        self.osa_noise_floor_dbm = -70.0      # noise floor per-bin (rough)
+        self.osa_noise_floor_w = 10 ** ((self.osa_noise_floor_dbm - 30.0) / 10.0)
+
+        self.osa_read_noise_db_std = 0.2      # optional dB jitter after log
+
+        # ADC params
+        self.adc_enable = True
+        self.adc_min_dbm = -80.0
+        self.adc_max_dbm = 10.0
+        self.adc_bits = 12                    # or set None and use adc_lsb_db
+        self.adc_lsb_db = 0.1
     
     def _gaussian_kernel1d(self, fwhm_bins: float, radius: int = None) -> torch.Tensor:
         # fwhm_bins in "FFT bins" (your spectrum index)
