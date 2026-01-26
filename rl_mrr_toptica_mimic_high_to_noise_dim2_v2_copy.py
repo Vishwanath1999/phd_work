@@ -387,6 +387,7 @@ class RL_MRR_Env():
         self.step_cntr = 0
         self.pcav_hist = []
         self.t_sim_step = 0
+        self.phase_noise = 0.0
 
         # self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
         self.power = np.array([0.16])
@@ -753,7 +754,7 @@ class RL_MRR_Env():
         # if len(self.env_p_hist) > env.seq_len:
         #     self.env_p_hist.pop(0)
         Ppmp = torch.tensor(self.power, dtype=torch.float64)
-        self.phase_noise += torch.sqrt(2*torch.pi* (self.pump_linewidth / self.FSR))*torch.randn(len(Ppmp), device=DEVICE, dtype=torch.float64)
+        self.phase_noise += torch.sqrt(2*torch.pi * (self.pump_linewidth / self.FSR) * self.ctrl_freq)*torch.randn(len(Ppmp), device=DEVICE, dtype=torch.float64)
         
         for ii in range(1):
             self.Ein[ii,int(self.mu0+self.ind_pmp[ii])] = torch.sqrt(Ppmp[ii])*len(self.mu)
@@ -1493,7 +1494,7 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'normal')
+    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'phase_noise')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
