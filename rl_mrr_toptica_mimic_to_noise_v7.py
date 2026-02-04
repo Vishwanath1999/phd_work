@@ -112,7 +112,7 @@ class RL_MRR_Env():
         # del_omega_init = self.sim_tensor['domega_init']
         del_omega_init = 7*self.un_norm_kappa
         self.del_omega_init = del_omega_init
-        self.del_omega_ul = 7*self.un_norm_kappa
+        self.del_omega_ul = 9*self.un_norm_kappa
         self.current_del_omega = del_omega_init
         del_omega_end = -7*self.un_norm_kappa
         self.del_omega_end = del_omega_end
@@ -718,7 +718,7 @@ config = {
     'alpha': 3e-4,
     'beta': 3e-4,
     'mem_size': int(1e6),
-    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuning_v8',
+    'run_name': 'mrr_sac_cluster_delayed_toptica_pow_ton_un_norm_high_only_detuning_v9',
     'batch_size': 256,
     'dist': 'normal', # 'beta' or 'normal'
     'train':True,

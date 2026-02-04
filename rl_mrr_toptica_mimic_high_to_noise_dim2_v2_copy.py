@@ -3,14 +3,9 @@ import torch
 import numpy as np
 from scipy.io import loadmat, savemat
 from scipy import constants as cts
-# import torch.types
 from tqdm import tqdm
-# from ipywidgets import interact, widgets
 import matplotlib.pyplot as plt
 import pandas as pd
-# from fastdtw import fastdtw
-# from scipy.spatial.distance import euclidean
-# from numba import njit, prange
 import wandb
 
 DEVICE = 'cpu'
@@ -165,7 +160,7 @@ class RL_MRR_Env():
         self.Dint_shift = torch.fft.ifftshift(self.Dint)
 
         dt = 1
-        self.max_steps = int(7e5)
+        self.max_steps = int(2e6)
         t_end  = self.max_steps*tR.cpu().numpy()
         t_ramp = t_end
         tr = tR.cpu().numpy()
@@ -187,7 +182,7 @@ class RL_MRR_Env():
         self.delta_omega_step = delta_omega_step
         self.softness = softness
 
-        self.f_R = 0.0         # Raman fraction
+        self.f_R = 0.0        # Raman fraction
         self.tau1 = 15e-15        # s
         self.tau2 = 120e-15       # s
         self.N_raman = int(len(mu))
@@ -209,7 +204,7 @@ class RL_MRR_Env():
 
         # N-point FFT => circular convolution (recommended for ring resonators)
         self.H_R_FFT = torch.fft.fft(h_R_fft)
-        self.pump_linewidth = 1e6  # in Hz
+        self.pump_linewidth = 2e3  # in Hz
         
     
     @staticmethod
@@ -353,7 +348,8 @@ class RL_MRR_Env():
     #         A_h_prop = A_prop
     #     err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
     #     raise RuntimeError(f"Convergence Error: {err}")
-
+    # @staticmethod
+    # @torch.jit.script
     def ssfm_step(self,A0: torch.Tensor, it: int, alpha: torch.Tensor, Dint_shift: torch.Tensor,
                 del_omega_all: torch.Tensor, tR: torch.Tensor, gamma: torch.Tensor, L: torch.Tensor, 
                 max_iter: int, tol: float, dt: int, kext: torch.Tensor, Fdrive_val:torch.Tensor, HR_FFT:torch.Tensor,fR:float
@@ -387,7 +383,7 @@ class RL_MRR_Env():
         self.step_cntr = 0
         self.pcav_hist = []
         self.t_sim_step = 0
-        self.phase_noise = 0.0
+        self.phase_noise = 0
 
         # self.power = np.random.uniform(self.p_min, self.p_max, size=(1,))
         self.power = np.array([0.16])
@@ -758,7 +754,7 @@ class RL_MRR_Env():
         
         for ii in range(1):
             self.Ein[ii,int(self.mu0+self.ind_pmp[ii])] = torch.sqrt(Ppmp[ii])*len(self.mu)
-            self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*(self.phi_pmp[ii]+ self.phase_noise[ii]))
+            self.Ain[ii] = torch.fft.ifft(torch.fft.fftshift(self.Ein[ii],dim=0),dim=0)*torch.exp(-1j*(self.phi_pmp[ii]+ 0*self.phase_noise[ii]))
         
         delta_omega = (2*torch.pi)*self.rescale_and_quantize(action, self.delta_omega_min, self.delta_omega_max, self.delta_omega_step)  # Convert GHz to rad/s
         
@@ -898,7 +894,7 @@ agent.load_models()
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=100, thermal_effect='high',\
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=500, thermal_effect='high',\
                   delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
     desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex128)
@@ -937,7 +933,7 @@ def run_test_processes(run_id, save_dir):
     # select a random power between p_min and p_max for the environment
     # p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
     # p_pmp = np.round(p_pmp, 3)
-    state, acav, ecav, pcav = env.reset(10000)
+    state, acav, ecav, pcav = env.reset(50000)
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -1494,7 +1490,8 @@ import numpy as np
 
 if __name__ == '__main__':
     # Create save directory if not exists
-    save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'phase_noise')
+    # save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'new_ctrl_freq_no_raman')
+    save_dir = os.path.join('/work3/viswa/results', agent.run_name, env.thermal_effect,'new_ctrl_freq','noise_to_shot')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
