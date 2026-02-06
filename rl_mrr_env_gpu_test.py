@@ -8,55 +8,96 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import wandb
 
-DEVICE = 'cpu'
+DEVICE = 'cuda:0'
 C0 = 299792458
 H_BAR = cts.hbar
 BASE_CTRL_FREQ = 100  # Control frequency in number of steps
 # %%
+# --- JIT PHYSICS KERNELS (GPU SAFE) ---
+
 @torch.jit.script
-def FFT_Lin(it: int, alpha: torch.Tensor, Dint_shift: torch.Tensor, del_omega_all: torch.Tensor, tR: torch.Tensor) -> torch.Tensor:
+def FFT_Lin(it: int, alpha: torch.Tensor, Dint_shift: torch.Tensor, 
+            del_omega_all: torch.Tensor, tR: torch.Tensor) -> torch.Tensor:
     '''
-    Linear operator
-    Input:
-        it (int) : Time index
-        alpha (torch.Tensor) : Linewidth enhancement factor
-        Dint_shift (torch.Tensor) : Dispersive operator
-        del_omega_all (torch.Tensor) : Detuning
-        tR (torch.Tensor) : Round trip time
-    Output:
-        torch.Tensor : Linear operator
+    Linear operator.
+    Fix: Uses torch.complex() instead of '1j * ...' to avoid dtype errors on GPU.
     '''
-    return (-alpha / 2) + 1j * (Dint_shift - del_omega_all) * tR
+    # Original: (-alpha / 2) + 1j * (Dint_shift - del_omega_all) * tR
+    
+    real_part = -alpha / 2
+    imag_part = (Dint_shift - del_omega_all) * tR
+    
+    # Explicitly construct the complex tensor
+    return torch.complex(real_part, imag_part)
 
 @torch.jit.script
 def raman_response(A: torch.Tensor, H_R_FFT: torch.Tensor) -> torch.Tensor:
-    """
-    Raman convolution on a periodic grid (circular):
-    R(t) = ∫ h_R(τ) |A(t-τ)|^2 dτ
-    Returns R(t) (real-valued).
-    """
-    power = torch.abs(A) ** 2                       # real
+    """Raman convolution"""
+    power = torch.abs(A) ** 2
+    # Ensure we return the real part as a tensor (implicitly float)
     return torch.fft.ifft(torch.fft.fft(power) * H_R_FFT).real
 
-    # @staticmethod
 @torch.jit.script
-def NL_with_Raman(
-    uu: torch.Tensor,
-    raman_response_: torch.Tensor,
-    gamma: torch.Tensor,
-    L: torch.Tensor,
-    f_R: float,
-) -> torch.Tensor:
+def NL_with_Raman(uu: torch.Tensor, raman_response_: torch.Tensor, 
+                  gamma: torch.Tensor, L: torch.Tensor, f_R: float) -> torch.Tensor:
     """
-    Nonlinear operator:
-    -i*gamma*L * [ (1-f_R)|u|^2 + f_R*(h_R ⊛ |u|^2) ]
+    Nonlinear operator.
+    Fix: Uses torch.complex() to create the imaginary term safely.
     """
     kerr = torch.abs(uu) ** 2
+    
     if f_R > 0.0:
         total = (1.0 - f_R) * kerr + f_R * raman_response_
     else:
         total = kerr
-    return -1j * (gamma * L * total)
+    
+    # Original: return -1j * (gamma * L * total)
+    # New: Construct 0 - i*(gamma*L*total)
+    
+    zero = torch.zeros_like(total)
+    imag_val = -(gamma * L * total)
+    
+    return torch.complex(zero, imag_val)
+
+
+
+@torch.jit.script
+def Fdrive_jit(del_omega_val: torch.Tensor, t_sim: float, Ain: torch.Tensor, 
+               Dint: torch.Tensor, mu0: int, ind_pmp: torch.Tensor) -> torch.Tensor:
+    
+    # 1. Initialize Force with the EXACT same dtype and device as Input (Ain)
+    # This prevents type mismatch errors
+    Force = torch.zeros(Ain.shape[1], device=Ain.device, dtype=Ain.dtype)
+    
+    # 2. Create 'j' as a Tensor. 
+    # Python's "1j" is Double precision. We need "1j" in Float precision (complex64)
+    # to match the GPU tensors.
+    j = torch.tensor(0 + 1j, device=Ain.device, dtype=Ain.dtype)
+
+    # 3. Loop over pumps
+    for ii in range(len(ind_pmp)):
+        # JIT requires explicit integer casting for indexing
+        idx = int(ind_pmp[ii].item())
+        
+        if ii > 0:
+            # Calculate phase shift for secondary pumps
+            # Ensure calculations result in the correct float type
+            sigma = (2*del_omega_val + Dint[mu0 + idx] - 0.5*del_omega_val) * t_sim
+        else:
+            sigma = torch.tensor(0.0, device=Ain.device, dtype=Dint.dtype)
+        
+        # 4. Safe Math
+        # Use the tensor 'j' instead of scalar '1j'
+        # Force = Force - 1j * Ain * exp(1j * sigma)
+        
+        # Calculate phase term first
+        # Casting sigma to complex via multiplication by j
+        phase_factor = torch.exp(j * sigma)
+        
+        # Update Force
+        Force = Force - (j * Ain[ii] * phase_factor)
+        
+    return Force
 
 # %%
 class RL_MRR_Env():
@@ -175,6 +216,7 @@ class RL_MRR_Env():
         del_omega = self.sim['domega']
         ind_pmp = [ii for ii in self.sim_tensor['ind_pmp'].int().cpu().numpy()]    
         self.ind_pmp = ind_pmp
+        self.ind_pmp_tensor = torch.tensor(ind_pmp, device=DEVICE)
         mu_sim = self.sim_tensor['mucenter']
         mu = torch.arange(mu_sim[0], mu_sim[1]+1, device=DEVICE)
         self.mu= mu
@@ -263,15 +305,24 @@ class RL_MRR_Env():
         Enoise = array * torch.sqrt(Ephoton / 2) * torch.exp(1j * phase) * mu_len
         return torch.fft.ifftshift(torch.fft.ifft(Enoise)).squeeze()
     
-    def Fdrive(self, del_omega_all, t_sim, Ain):
-        Force = torch.zeros(len(self.mu), device=DEVICE, dtype=torch.complex64)
-        for ii in range(len(self.ind_pmp)):
-            if ii > 0:
-                sigma = (2*del_omega_all[ii] + self.Dint[(self.mu0)+self.ind_pmp[ii]] - 0.5*del_omega_all[0])*t_sim
-            else:
-                sigma=torch.zeros(1, device=DEVICE)
-            Force = Force - 1j*Ain[ii]*torch.exp(1j*sigma)
-        return Force + self.Noise(h_bar=H_BAR, omega1=2*torch.pi*self.sim_tensor['f_pmp'], mu_len=len(self.mu), device=DEVICE)
+    # def Fdrive(self, del_omega_all, t_sim, Ain):
+
+    #     Force = torch.zeros(len(self.mu), device=DEVICE, dtype=torch.complex64)
+    #     for ii in range(len(self.ind_pmp)):
+    #         if ii > 0:
+    #             sigma = (2*del_omega_all[ii] + self.Dint[(self.mu0)+self.ind_pmp[ii]] - 0.5*del_omega_all[0])*t_sim
+    #         else:
+    #             sigma=torch.zeros(1, device=DEVICE)
+    #         Force = Force - 1j*Ain[ii]*torch.exp(1j*sigma)
+    #     return Force + self.Noise(h_bar=H_BAR, omega1=2*torch.pi*self.sim_tensor['f_pmp'], mu_len=len(self.mu), device=DEVICE)
+    def Fdrive(self, del_omega_val, t_sim, Ain):
+        # Ensure inputs are correct types for JIT
+        # t_sim must be float (not tensor) if passed to the JIT function defined above
+        t_val = float(t_sim) if torch.is_tensor(t_sim) else t_sim
+        
+        # Call the JIT function
+        # self.ind_pmp_tensor must be created in __init__
+        return Fdrive_jit(del_omega_val, t_val, Ain, self.Dint, self.mu0, self.ind_pmp_tensor)
 
     def dict_to_tensor(self,dic):
         dic.pop('__header__', None)
@@ -325,24 +376,41 @@ class RL_MRR_Env():
     @staticmethod
     @torch.jit.script
     def ssfm_step(A0: torch.Tensor, it: int, alpha: torch.Tensor, Dint_shift: torch.Tensor,
-                del_omega_all: torch.Tensor, tR: torch.Tensor, gamma: torch.Tensor, L: torch.Tensor, 
-                max_iter: int, tol: float, dt: int, kext: torch.Tensor, Fdrive_val:torch.Tensor, HR_FFT:torch.Tensor,fR:float
-                ) -> torch.Tensor:
-        
+                del_omega_val: torch.Tensor, tR: torch.Tensor, gamma: torch.Tensor, L: torch.Tensor, 
+                max_iter: int, tol: float, dt: float, kext: torch.Tensor, Fdrive_val: torch.Tensor, 
+                HR_FFT: torch.Tensor, fR: float) -> torch.Tensor:
+        '''
+        Main Split-Step wrapper.
+        Fix: Ensures dt is treated as float for scaling.
+        '''
+        # 1. Drive
         A0 = A0 + Fdrive_val * torch.sqrt(kext) * dt
-        L_h_prop = torch.exp(FFT_Lin(it, alpha, Dint_shift, del_omega_all, tR) * dt / 2)
+        
+        # 2. Linear Half-Step
+        # dt is float, so we can multiply directly
+        lin_op = FFT_Lin(it, alpha, Dint_shift, del_omega_val, tR) * (dt / 2.0)
+        L_h_prop = torch.exp(lin_op)
+        
         A_L_h_prop = torch.fft.ifft(torch.fft.fft(A0) * L_h_prop)
-        NL_h_prop_0 = NL_with_Raman(A0, raman_response(A0, HR_FFT), gamma, L, fR)
-        A_h_prop = A0#.clone()
-        A_prop = 0*A0.clone()
-        # torch.zeros_like(A0, dtype=torch.complex64, device=A0.device)
+        
+        # 3. Nonlinear Predictor
+        raman_0 = raman_response(A0, HR_FFT)
+        NL_h_prop_0 = NL_with_Raman(A0, raman_0, gamma, L, fR)
+        
+        A_h_prop = A0
+        A_prop = A0 
 
+        # 4. Iteration
         for _ in range(max_iter):
-            # err=0
-            NL_h_prop_1 = NL_with_Raman(A_h_prop, raman_response(A_h_prop, HR_FFT), gamma, L, fR)
-            NL_prop = (NL_h_prop_0 + NL_h_prop_1) * dt / 2
+            raman_1 = raman_response(A_h_prop, HR_FFT)
+            NL_h_prop_1 = NL_with_Raman(A_h_prop, raman_1, gamma, L, fR)
+            
+            NL_prop = (NL_h_prop_0 + NL_h_prop_1) * (dt / 2.0)
+            
+            # Combined Step
             A_prop = torch.fft.ifft(torch.fft.fft(A_L_h_prop * torch.exp(NL_prop)) * L_h_prop)
-            # err = torch.linalg.vector_norm(A_prop - A_h_prop, ord=2, dim=0) / torch.linalg.vector_norm(A_h_prop, ord=2, dim=0)
+            A_h_prop = A_prop
+            
         return A_prop
     
     def reset(self, steps=None):
@@ -864,7 +932,7 @@ agent.load_models()
 # %%
 def run_test_processes(run_id, save_dir):
     # Re-create environment and agent inside the process
-    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=300, thermal_effect='high',\
+    env = RL_MRR_Env(seq_len=100, p_max=0.2, p_min=0.05, ctrl_freq=400, thermal_effect='high',\
                   delta_omega_min=-2e6, delta_omega_max=2e6, delta_omega_step=1e4, soft_clamp=False, softness=0.35)
     desired_spectrum = loadmat('desired_spec2.mat')['Ewg'][0]
     desired_spectrum_tensor = torch.tensor(desired_spectrum, device=DEVICE, dtype=torch.complex64)
@@ -903,7 +971,7 @@ def run_test_processes(run_id, save_dir):
     # select a random power between p_min and p_max for the environment
     # p_pmp = np.random.uniform(0.12, 0.18, size=(1,))
     # p_pmp = np.round(p_pmp, 3)
-    state, acav, ecav, pcav = env.reset(30000)
+    state, acav, ecav, pcav = env.reset(40000)
     log_pcav = 10*np.log10(pcav + 1e-12) + 30
     bounds = calc_detuning_distance(env, scale=3)
     den = env.p_max - env.p_min
@@ -1461,11 +1529,11 @@ import numpy as np
 if __name__ == '__main__':
     # Create save directory if not exists
     # save_dir = os.path.join('./results', agent.run_name, env.thermal_effect,'new_ctrl_freq_no_raman')
-    save_dir = os.path.join('/work3/viswa/results', agent.run_name, env.thermal_effect,'new_ctrl_freq','phase_noise_to_shot_raman_3x_delay')
+    save_dir = os.path.join('/work3/viswa/results', agent.run_name, env.thermal_effect,'new_ctrl_freq','phase_noise_to_shot_raman_4x_delay')
     os.makedirs(save_dir, exist_ok=True)
     print('Save dir:', save_dir)
     mp.set_start_method('spawn', force=True)  # safer for PyTorch
-    num_runs = 10
+    num_runs = 1
     processes = []
     for run_id in range(num_runs):
         p = mp.Process(target=run_test_processes, args=(run_id, save_dir))
